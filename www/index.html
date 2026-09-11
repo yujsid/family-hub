@@ -30,7 +30,7 @@
       <nav class="tabs" role="tablist">
         <button class="tab is-active" data-tab="calendar" type="button">달력</button>
         <button class="tab" data-tab="stamps" type="button"><span class="tab-full">용돈 도장</span><span class="tab-short">용돈</span></button>
-        <button class="tab" data-tab="settle" type="button"><span class="tab-full">월말 정산</span><span class="tab-short">정산</span></button>
+        <button class="tab" data-tab="talk" type="button">대화</button>
         <button class="tab" data-tab="settings" type="button">설정</button>
       </nav>
     </header>
@@ -78,16 +78,13 @@
       <div id="stamp-board" class="stamp-board"></div>
     </section>
 
-    <section id="view-settle" class="view">
+    <section id="view-talk" class="view">
       <div class="toolbar">
-        <div class="month-nav">
-          <button id="settle-prev" type="button">‹</button>
-          <h2 id="settle-month-title"></h2>
-          <button id="settle-next" type="button">›</button>
-        </div>
+        <h2 class="talk-heading">가족 대화</h2>
+        <button id="add-post-btn" class="primary" type="button">글 쓰기</button>
       </div>
-      <p class="hint">항목별 단가 × 도장 개수로 월말 용돈을 계산합니다.</p>
-      <div id="settle-table"></div>
+      <p class="hint">가족에게 소식을 남기고 댓글로 이야기해 보세요.</p>
+      <div id="talk-feed" class="talk-feed"></div>
     </section>
 
     <section id="view-settings" class="view">

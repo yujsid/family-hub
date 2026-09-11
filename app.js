@@ -29,6 +29,7 @@
     pinResolve: null,
     events: [],
     stamps: [],
+    posts: [],
     pin: "1234",
     rates: { tidy: 500, errand: 500, clean: 500, recycle: 500, etc: 300 },
     cloudReady: false,
@@ -94,6 +95,7 @@
     return {
       events: state.events,
       stamps: state.stamps,
+      posts: state.posts,
       pin: state.pin,
       rates: state.rates,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -104,10 +106,34 @@
     state.applyingRemote = true;
     state.events = Array.isArray(data.events) ? data.events : [];
     state.stamps = Array.isArray(data.stamps) ? data.stamps : [];
+    state.posts = Array.isArray(data.posts) ? data.posts : [];
     state.pin = data.pin || "1234";
     state.rates = { ...state.rates, ...(data.rates || {}) };
     render();
     state.applyingRemote = false;
+  }
+
+  function esc(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function formatWhen(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const now = new Date();
+    const same = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    if (same) return `오늘 ${time}`;
+    return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${time}`;
+  }
+
+  function richText(s) {
+    return esc(s).replace(/\n/g, "<br>");
   }
 
   function updateCloudStatus() {
@@ -649,49 +675,121 @@
     }).join("");
   }
 
-  function renderSettle() {
-    const d = state.cursor;
-    $("#settle-month-title").textContent = `${monthLabel(d)} 정산`;
-    const head = `<tr><th>구성원</th>${DEFAULT_CATEGORIES.map((c) => `<th>${c.name}<br><small>${(state.rates[c.id] || 0).toLocaleString()}원</small></th>`).join("")}<th>합계</th></tr>`;
-    let grand = 0;
-    const body = ALLOWANCE_MEMBERS.map((m) => {
-      const list = stampsInMonth(m.id, d.getFullYear(), d.getMonth());
-      let rowSum = 0;
-      const cells = DEFAULT_CATEGORIES.map((c) => {
-        const n = list.filter((s) => s.categoryId === c.id).length;
-        const won = n * (state.rates[c.id] || 0);
-        rowSum += won;
-        return `<td>${n}개<br><strong>${won.toLocaleString()}원</strong></td>`;
-      }).join("");
-      grand += rowSum;
-      return `<tr><td>${m.name} (${m.role})</td>${cells}<td>${rowSum.toLocaleString()}원</td></tr>`;
-    }).join("");
-    const cards = ALLOWANCE_MEMBERS.map((m) => {
-      const list = stampsInMonth(m.id, d.getFullYear(), d.getMonth());
-      let rowSum = 0;
-      const rows = DEFAULT_CATEGORIES.map((c) => {
-        const n = list.filter((s) => s.categoryId === c.id).length;
-        const won = n * (state.rates[c.id] || 0);
-        rowSum += won;
-        return `<li><span>${c.emoji} ${c.name}</span><strong>${n}개 · ${won.toLocaleString()}원</strong></li>`;
-      }).join("");
-      return `<article class="card settle-card">
-        <h3><span class="dot" style="background:${m.color}"></span> ${m.name} (${m.role})</h3>
-        <ul class="settle-list">${rows}</ul>
-        <p class="settle-sum">합계 ${rowSum.toLocaleString()}원</p>
-      </article>`;
-    }).join("");
-    $("#settle-table").innerHTML = `
-      <div class="settle settle-table-wrap">
-        <table>
-          <thead>${head}</thead>
-          <tbody>${body}</tbody>
-          <tfoot><tr><td>가족 합계</td>${DEFAULT_CATEGORIES.map(() => "<td></td>").join("")}<td>${grand.toLocaleString()}원</td></tr></tfoot>
-        </table>
-      </div>
-      <div class="settle-cards">${cards}
-        <article class="card settle-card settle-total"><h3>가족 합계</h3><p class="settle-sum">${grand.toLocaleString()}원</p></article>
-      </div>`;
+  function memberSelectOptions(selectedId) {
+    return MEMBERS.map(
+      (m) => `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${m.name} (${m.role})</option>`
+    ).join("");
+  }
+
+  function renderTalk() {
+    const feed = $("#talk-feed");
+    if (!feed) return;
+    const posts = [...state.posts].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    if (!posts.length) {
+      feed.innerHTML = emptyState("아직 글이 없어요. 첫 글을 남겨 보세요.");
+      return;
+    }
+    feed.innerHTML = posts
+      .map((post) => {
+        const author = memberById(post.memberId) || MEMBERS[0];
+        const comments = Array.isArray(post.comments) ? post.comments : [];
+        const commentHtml = comments
+          .map((c) => {
+            const who = memberById(c.memberId) || MEMBERS[0];
+            return `<div class="talk-comment" style="--member:${who.color}">
+              <div class="talk-meta">
+                <span class="dot" style="background:${who.color}"></span>
+                <strong>${esc(who.name)}</strong>
+                <span class="talk-time">${esc(formatWhen(c.createdAt))}</span>
+                <button class="ghost tiny" type="button" data-del-comment="${esc(c.id)}" data-post-id="${esc(post.id)}">삭제</button>
+              </div>
+              <p class="talk-body">${richText(c.body)}</p>
+            </div>`;
+          })
+          .join("");
+        const title = post.title ? `<h3 class="talk-title">${esc(post.title)}</h3>` : "";
+        return `<article class="talk-post" style="--member:${author.color}">
+          <header class="talk-meta">
+            <span class="dot" style="background:${author.color}"></span>
+            <strong>${esc(author.name)}</strong>
+            <span class="talk-role">${esc(author.role)}</span>
+            <span class="talk-time">${esc(formatWhen(post.createdAt))}</span>
+            <button class="ghost tiny" type="button" data-del-post="${esc(post.id)}">삭제</button>
+          </header>
+          ${title}
+          <p class="talk-body">${richText(post.body)}</p>
+          <div class="talk-comments">
+            <p class="talk-comments-label">댓글 ${comments.length}</p>
+            ${commentHtml || `<p class="hint talk-empty-comments">아직 댓글이 없어요.</p>`}
+            <form class="comment-form" data-post-id="${esc(post.id)}" action="#" method="post">
+              <select name="memberId" aria-label="작성자">${memberSelectOptions(author.id)}</select>
+              <input name="body" required maxlength="500" placeholder="댓글을 입력하세요" />
+              <button class="primary" type="submit">달기</button>
+            </form>
+          </div>
+        </article>`;
+      })
+      .join("");
+  }
+
+  function postForm() {
+    openModal(`
+      <h3>글 쓰기</h3>
+      <form id="post-form" class="stack" action="#" method="post">
+        <label>작성자
+          <select name="memberId">${memberSelectOptions("jaesang")}</select>
+        </label>
+        <label>제목 (선택)
+          <input name="title" maxlength="80" placeholder="예: 이번 주말 계획" />
+        </label>
+        <label>내용
+          <textarea name="body" rows="5" required maxlength="2000" placeholder="가족에게 전할 말을 적어 주세요."></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">취소</button>
+          <button class="primary" type="button" id="save-post">올리기</button>
+        </div>
+      </form>
+    `);
+  }
+
+  function savePostFromForm(form) {
+    const fd = new FormData(form);
+    const body = String(fd.get("body") || "").trim();
+    if (!body) return toast("내용을 입력해 주세요.");
+    const title = String(fd.get("title") || "").trim();
+    state.posts.push({
+      id: uid(),
+      memberId: fd.get("memberId") || "jaesang",
+      title,
+      body,
+      createdAt: new Date().toISOString(),
+      comments: [],
+    });
+    save();
+    closeModal();
+    state.tab = "talk";
+    render();
+    toast("글을 올렸습니다.");
+  }
+
+  function saveCommentFromForm(form) {
+    const postId = form.dataset.postId;
+    const post = state.posts.find((p) => p.id === postId);
+    if (!post) return;
+    const fd = new FormData(form);
+    const body = String(fd.get("body") || "").trim();
+    if (!body) return toast("댓글을 입력해 주세요.");
+    post.comments = Array.isArray(post.comments) ? post.comments : [];
+    post.comments.push({
+      id: uid(),
+      memberId: fd.get("memberId") || "jaesang",
+      body,
+      createdAt: new Date().toISOString(),
+    });
+    save();
+    render();
+    toast("댓글을 달았습니다.");
   }
 
   function renderSettings() {
@@ -711,7 +809,7 @@
     renderMemberFilters();
     if (state.tab === "calendar") renderCalendar();
     if (state.tab === "stamps") renderStampBoard();
-    if (state.tab === "settle") renderSettle();
+    if (state.tab === "talk") renderTalk();
     if (state.tab === "settings") renderSettings();
   }
 
@@ -1036,19 +1134,12 @@
     $("#add-todo-btn").addEventListener("click", () => eventForm(null, "todo"));
     $("#add-stamp-calendar-btn").addEventListener("click", () => stampForm());
     $("#add-stamp-btn").addEventListener("click", () => stampForm());
+    $("#add-post-btn").addEventListener("click", () => postForm());
     $("#stamp-prev").addEventListener("click", () => {
       state.cursor.setMonth(state.cursor.getMonth() - 1);
       render();
     });
     $("#stamp-next").addEventListener("click", () => {
-      state.cursor.setMonth(state.cursor.getMonth() + 1);
-      render();
-    });
-    $("#settle-prev").addEventListener("click", () => {
-      state.cursor.setMonth(state.cursor.getMonth() - 1);
-      render();
-    });
-    $("#settle-next").addEventListener("click", () => {
       state.cursor.setMonth(state.cursor.getMonth() + 1);
       render();
     });
@@ -1085,6 +1176,10 @@
       if (e.target.id === "save-stamp") {
         const form = document.getElementById("stamp-form");
         if (form) saveStampFromForm(form);
+      }
+      if (e.target.id === "save-post") {
+        const form = document.getElementById("post-form");
+        if (form) savePostFromForm(form);
       }
       if (e.target.id === "save-pin") {
         const form = document.getElementById("pin-form");
@@ -1131,6 +1226,25 @@
         save();
         render();
         toast("도장을 취소했습니다.");
+      }
+      const delPost = e.target.closest("[data-del-post]");
+      if (delPost) {
+        state.posts = state.posts.filter((p) => p.id !== delPost.dataset.delPost);
+        save();
+        render();
+        toast("글을 삭제했습니다.");
+        return;
+      }
+      const delComment = e.target.closest("[data-del-comment]");
+      if (delComment) {
+        const post = state.posts.find((p) => p.id === delComment.dataset.postId);
+        if (post) {
+          post.comments = (post.comments || []).filter((c) => c.id !== delComment.dataset.delComment);
+          save();
+          render();
+          toast("댓글을 삭제했습니다.");
+        }
+        return;
       }
       const quick = e.target.closest("[data-quick-stamp]");
       if (quick) stampForm(quick.dataset.quickStamp, quick.dataset.cat);
@@ -1206,13 +1320,20 @@
 
     document.addEventListener("submit", async (e) => {
       const formId = e.target && e.target.id;
-      if (!["event-form", "stamp-form", "pin-form", "rates-form"].includes(formId)) return;
+      const isComment = e.target && e.target.classList && e.target.classList.contains("comment-form");
+      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form"].includes(formId) && !isComment) return;
       e.preventDefault();
       if (formId === "event-form") {
         saveEventFromForm(e.target);
       }
       if (formId === "stamp-form") {
         saveStampFromForm(e.target);
+      }
+      if (formId === "post-form") {
+        savePostFromForm(e.target);
+      }
+      if (isComment) {
+        saveCommentFromForm(e.target);
       }
       if (e.target.id === "pin-form") {
         e.preventDefault();
