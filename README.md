@@ -31,5 +31,12 @@ GitHub에서 확인/설정:
 4. `firestore.rules` 내용을 Firestore 규칙에 붙여 넣기
 5. 사이트를 새로고침하면 가족 기기끼리 일정이 실시간으로 맞춰집니다
 
+## 3) Android에서 앱처럼 설치 (PWA)
+
+1. 폰 Chrome으로 https://yujsid.github.io/family-hub/ 접속
+2. 메뉴(⋮) → **홈 화면에 추가** 또는 **앱 설치**
+3. 홈 화면 아이콘으로 실행하면 일반 앱처럼 전체 화면으로 열립니다
+
 ## 로컬에서 열기
 `index.html`을 더블클릭하거나 로컬 서버로 열면 됩니다. Firebase 설정이 있어야 데이터가 클라우드에 저장됩니다.
+PWA 설치는 HTTPS 주소(GitHub Pages)에서만 가능합니다.
