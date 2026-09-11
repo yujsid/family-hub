@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v3";
+const CACHE = "family-hub-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,15 +8,6 @@ const ASSETS = [
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./assets/peanut/happy.png",
-  "./assets/peanut/sad.png",
-  "./assets/peanut/angry.png",
-  "./assets/peanut/curious.png",
-  "./assets/peanut/surprise.png",
-  "./assets/peanut/love.png",
-  "./assets/peanut/tired.png",
-  "./assets/peanut/proud.png",
-  "./assets/peanut/best.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -34,7 +25,6 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
-  // Firebase / Google APIs는 항상 네트워크
   if (url.hostname.includes("googleapis.com") || url.hostname.includes("gstatic.com") || url.hostname.includes("firebaseio.com") || url.hostname.includes("firestore.googleapis.com")) {
     return;
   }

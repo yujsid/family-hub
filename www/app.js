@@ -259,22 +259,15 @@
     return Boolean(ev.doneDates && ev.doneDates[ymd(date)]);
   }
 
-  function peanut(mood) {
-    return `assets/peanut/${mood}.png`;
+  function emptyState(text) {
+    return `<div class="empty-state"><p>${text}</p></div>`;
   }
 
-  function emptyState(mood, text) {
-    return `<div class="empty-state">
-      <img src="${peanut(mood)}" alt="피넛" />
-      <p>${text}</p>
-    </div>`;
-  }
-
-  function toast(msg, mood = "happy") {
+  function toast(msg) {
     document.querySelectorAll(".toast").forEach((t) => t.remove());
     const el = document.createElement("div");
-    el.className = "toast toast-peanut";
-    el.innerHTML = `<img src="${peanut(mood)}" alt="" /><span>${msg}</span>`;
+    el.className = "toast";
+    el.textContent = msg;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 2400);
   }
@@ -513,7 +506,7 @@
     const items = eventsOn(d);
     const stamps = stampsOn(d);
     if (!items.length && !stamps.length) {
-      return `<div class="day-list">${emptyState("curious", "이 날 등록된 일정·할 일·도장이 없습니다.")}</div>`;
+      return `<div class="day-list">${emptyState("이 날 등록된 일정·할 일·도장이 없습니다.")}</div>`;
     }
     const rows = items
       .map((ev) => {
@@ -608,7 +601,7 @@
               </div>`
               )
               .join("")
-          : emptyState("curious", "아직 비어 있어요. 일정, 할 일, 용돈 도장을 추가해 보세요.")
+          : emptyState("아직 비어 있어요. 일정, 할 일, 용돈 도장을 추가해 보세요.")
       }
       </div>
     `;
@@ -861,7 +854,7 @@
       save();
       closeModal();
       render();
-      toast("이 일정만 수정했습니다.", "proud");
+      toast("이 일정만 수정했습니다.");
       return;
     }
 
@@ -885,7 +878,7 @@
     save();
     closeModal();
     render();
-    toast("저장했습니다.", "happy");
+    toast("저장했습니다.");
   }
 
   function deleteEventOccurrence(scope) {
@@ -935,7 +928,7 @@
     save();
     closeModal();
     render();
-    toast("도장을 찍었습니다.", "best");
+    toast("도장을 찍었습니다.");
   }
 
   function stampForm(presetMember, presetCat) {
@@ -967,11 +960,8 @@
       state.pinBuffer = "";
       state.pinResolve = resolve;
       openModal(`
-        <div class="pin-hero">
-          <img src="${peanut("curious")}" alt="피넛" />
-          <h3>${title}</h3>
-          <p class="hint">도장과 같은 숫자 비밀번호를 입력하세요.</p>
-        </div>
+        <h3>${title}</h3>
+        <p class="hint">도장과 같은 숫자 비밀번호를 입력하세요.</p>
         <div class="pin-dots" id="pin-dots"></div>
         <div class="pin-pad">
           ${[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "OK"].map((n) => `<button type="button" data-pin="${n}">${n}</button>`).join("")}
@@ -1008,11 +998,11 @@
       if (next === "settings" && !state.settingsUnlocked) {
         const ok = await askPin("설정 잠금 해제");
         if (!ok) {
-          toast("설정에 들어가려면 비밀번호가 필요해요.", "sad");
+          toast("설정에 들어가려면 비밀번호가 필요해요.");
           return;
         }
         state.settingsUnlocked = true;
-        toast("설정을 열었어요!", "proud");
+        toast("설정을 열었어요!");
       }
       state.tab = next;
       render();
@@ -1144,7 +1134,7 @@
           const resolve = state.pinResolve;
           closeModal();
           if (resolve) resolve(ok);
-          if (!ok) toast("비밀번호가 올바르지 않습니다.", "angry");
+          if (!ok) toast("비밀번호가 올바르지 않습니다.");
           return;
         } else if (state.pinBuffer.length < 8) state.pinBuffer += v;
         updatePinDots();

@@ -48,19 +48,6 @@ body {
   align-items: center;
   gap: 12px;
 }
-.brand-mascot {
-  width: 76px;
-  height: 76px;
-  object-fit: contain;
-  background: transparent;
-  border-radius: 20px;
-  filter: drop-shadow(0 4px 8px rgba(120, 78, 42, 0.12));
-  animation: peanut-bounce 2.8s ease-in-out infinite;
-}
-@keyframes peanut-bounce {
-  0%, 100% { transform: translateY(0) rotate(-2deg); }
-  50% { transform: translateY(-6px) rotate(2deg); }
-}
 
 .topbar {
   display: flex;
@@ -597,24 +584,6 @@ button.primary {
 }
 
 .hint { color: var(--muted); margin: 0 0 16px; }
-.peanut-hint {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: linear-gradient(180deg, #fffaf2 0%, #fff3e4 100%);
-  border: 2px solid var(--line);
-  border-radius: 18px;
-  padding: 8px 12px;
-}
-.peanut-hint img {
-  width: 58px;
-  height: 58px;
-  object-fit: contain;
-  flex: 0 0 auto;
-  background: transparent;
-  mix-blend-mode: multiply;
-  border-radius: 14px;
-}
 .empty-state {
   display: grid;
   justify-items: center;
@@ -622,40 +591,12 @@ button.primary {
   padding: 28px 16px;
   text-align: center;
   color: var(--muted);
-  background: linear-gradient(180deg, rgba(255,250,242,0.9), rgba(255,243,228,0.55));
-  border-radius: 22px;
-}
-.empty-state img {
-  width: 132px;
-  height: 132px;
-  object-fit: contain;
-  background: transparent;
-  mix-blend-mode: multiply;
-  filter: drop-shadow(0 6px 12px rgba(120, 78, 42, 0.1));
 }
 .empty-state p {
   margin: 0;
   max-width: 280px;
   font-weight: 700;
   line-height: 1.45;
-}
-.pin-hero {
-  display: grid;
-  justify-items: center;
-  text-align: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.pin-hero img {
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  mix-blend-mode: multiply;
-  background: transparent;
-}
-.pin-hero h3 {
-  font-family: "Jua", "Nunito", sans-serif;
-  margin: 0;
 }
 .stamp-board, .card-grid {
   display: grid;
@@ -790,27 +731,7 @@ input, select, textarea {
   max-width: calc(100% - 32px);
   text-align: center;
   box-shadow: var(--shadow);
-}
-.toast-peanut {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px 8px 8px;
-  background: #fffdf8;
-  color: var(--ink);
-  border: 2px solid var(--line);
-}
-.toast-peanut img {
-  width: 44px;
-  height: 44px;
-  object-fit: contain;
-  mix-blend-mode: multiply;
-  background: transparent;
-  border-radius: 10px;
-}
-.toast-peanut span {
-  font-weight: 800;
-  text-align: left;
+  font-weight: 700;
 }
 .settle-cards { display: none; }
 .settle-list {
@@ -836,7 +757,6 @@ input, select, textarea {
     padding-right: max(12px, env(safe-area-inset-right));
   }
   h1 { font-size: 24px; }
-  .brand-mascot { width: 58px; height: 58px; }
   .topbar {
     align-items: flex-start;
     margin-bottom: 12px;
