@@ -1,15 +1,17 @@
 :root {
-  --bg: #f4efe6;
-  --paper: #fffaf3;
-  --ink: #2b2a28;
-  --muted: #6e6860;
-  --line: #e6ddd0;
-  --coral: #d76a4f;
-  --navy: #3d5a80;
-  --green: #5e8f74;
-  --gold: #d4a017;
-  --shadow: 0 12px 32px rgba(62, 48, 32, 0.08);
-  --radius: 18px;
+  --bg: #fff3e4;
+  --paper: #fffdf8;
+  --ink: #4a3b32;
+  --muted: #8a7468;
+  --line: #f0ddc8;
+  --coral: #ef8f6d;
+  --navy: #6b8cae;
+  --green: #7baf8e;
+  --gold: #efc14a;
+  --blush: #f7b6ae;
+  --cream: #ffe9cb;
+  --shadow: 0 10px 28px rgba(120, 78, 42, 0.12);
+  --radius: 22px;
 }
 
 * { box-sizing: border-box; }
@@ -23,10 +25,11 @@ html, body {
   min-height: 100dvh;
 }
 body {
-  font-family: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  font-family: "Nunito", "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
   background:
-    radial-gradient(1200px 600px at 10% -10%, #fbe8d8 0%, transparent 50%),
-    radial-gradient(800px 400px at 100% 0%, #dceee4 0%, transparent 46%),
+    radial-gradient(900px 500px at 8% -8%, #ffe0c2 0%, transparent 55%),
+    radial-gradient(700px 420px at 100% 0%, #ffe8f0 0%, transparent 48%),
+    radial-gradient(600px 380px at 50% 100%, #fff4b8 0%, transparent 45%),
     var(--bg);
   color: var(--ink);
   overflow-x: hidden;
@@ -40,6 +43,23 @@ body {
   padding-right: max(18px, env(safe-area-inset-right));
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand-mascot {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 10px rgba(120, 78, 42, 0.18));
+  animation: peanut-bounce 2.8s ease-in-out infinite;
+}
+@keyframes peanut-bounce {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-6px) rotate(2deg); }
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -50,20 +70,27 @@ body {
 }
 .eyebrow {
   margin: 0 0 4px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-size: 12px;
+  letter-spacing: 0.04em;
+  font-size: 13px;
   color: var(--muted);
+  font-weight: 700;
 }
-h1 { margin: 0; font-size: 28px; letter-spacing: -0.03em; }
+h1 {
+  margin: 0;
+  font-family: "Jua", "Nunito", sans-serif;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: #5a4034;
+}
 
 .tabs {
   display: flex;
   gap: 8px;
-  background: rgba(255, 250, 243, 0.8);
+  background: rgba(255, 253, 248, 0.92);
   padding: 6px;
   border-radius: 999px;
-  border: 1px solid var(--line);
+  border: 2px solid var(--line);
+  box-shadow: var(--shadow);
 }
 .tab, button {
   font: inherit;
@@ -76,10 +103,12 @@ h1 { margin: 0; font-size: 28px; letter-spacing: -0.03em; }
   padding: 8px 14px;
   border-radius: 999px;
   color: var(--muted);
+  font-weight: 700;
 }
 .tab.is-active {
-  background: var(--ink);
+  background: linear-gradient(180deg, #ffb089, var(--coral));
   color: #fff;
+  box-shadow: 0 6px 14px rgba(239, 143, 109, 0.35);
 }
 .tab-short { display: none; }
 
@@ -105,31 +134,45 @@ h1 { margin: 0; font-size: 28px; letter-spacing: -0.03em; }
 .actions button,
 .view-switch button,
 .primary {
-  border: 1px solid var(--line);
+  border: 2px solid var(--line);
   background: var(--paper);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 8px 12px;
   box-shadow: var(--shadow);
+  font-weight: 700;
 }
 .view-switch { display: flex; gap: 6px; }
 .view-switch .is-active,
 button.primary {
-  background: var(--coral);
+  background: linear-gradient(180deg, #ffb089, var(--coral));
   border-color: transparent;
   color: #fff;
 }
 .actions { display: flex; gap: 8px; }
 
+.calendar, .week-grid, .day-list, .card, .member-card, .day-panel {
+  border-width: 2px;
+  border-radius: 22px;
+}
+.modal {
+  border: 3px solid var(--line);
+  border-radius: 28px;
+  background: linear-gradient(180deg, #fffdf8 0%, #fff7ec 100%);
+}
+.modal h3 {
+  font-family: "Jua", "Nunito", sans-serif;
+}
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--paper);
+  border: 2px solid var(--line);
+  background: #fffdf8;
   font-size: 13px;
   white-space: nowrap;
+  font-weight: 700;
 }
 .chip input { accent-color: var(--ink); }
 .dot {
@@ -539,9 +582,9 @@ button.primary {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #faf6f0;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: #fff8ef;
 }
 .scope-option {
   display: flex !important;
@@ -549,6 +592,59 @@ button.primary {
   gap: 8px;
   color: var(--ink) !important;
   font-size: 14px;
+}
+
+.hint { color: var(--muted); margin: 0 0 16px; }
+.peanut-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff8ef;
+  border: 2px solid var(--line);
+  border-radius: 18px;
+  padding: 10px 12px;
+}
+.peanut-hint img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+.empty-state img {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 14px rgba(120, 78, 42, 0.15));
+}
+.empty-state p {
+  margin: 0;
+  max-width: 280px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.pin-hero {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.pin-hero img {
+  width: 110px;
+  height: 110px;
+  object-fit: contain;
+}
+.pin-hero h3 {
+  font-family: "Jua", "Nunito", sans-serif;
+  margin: 0;
 }
 .stamp-board, .card-grid {
   display: grid;
@@ -675,13 +771,32 @@ input, select, textarea {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--ink);
+  background: #5a4034;
   color: #fff;
   padding: 10px 16px;
   border-radius: 999px;
   z-index: 30;
   max-width: calc(100% - 32px);
   text-align: center;
+  box-shadow: var(--shadow);
+}
+.toast-peanut {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 8px 8px;
+  background: #fffdf8;
+  color: var(--ink);
+  border: 2px solid var(--line);
+}
+.toast-peanut img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+.toast-peanut span {
+  font-weight: 800;
+  text-align: left;
 }
 .settle-cards { display: none; }
 .settle-list {
@@ -706,7 +821,8 @@ input, select, textarea {
     padding-left: max(12px, env(safe-area-inset-left));
     padding-right: max(12px, env(safe-area-inset-right));
   }
-  h1 { font-size: 22px; }
+  h1 { font-size: 24px; }
+  .brand-mascot { width: 58px; height: 58px; }
   .topbar {
     align-items: flex-start;
     margin-bottom: 12px;
