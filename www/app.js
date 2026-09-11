@@ -715,6 +715,13 @@
     if (state.tab === "settings") renderSettings();
   }
 
+  function addMonthsYmd(dateStr, months) {
+    const d = parseYmd(dateStr || ymd(new Date()));
+    const out = new Date(d);
+    out.setMonth(out.getMonth() + months);
+    return ymd(out);
+  }
+
   function eventForm(existing, kind, occurrenceDate) {
     const occDate = occurrenceDate || (existing && existing.date) || ymd(state.selected);
     const base = existing || {
@@ -735,7 +742,7 @@
     const weekdayChecks = [1, 2, 3, 4, 5, 6, 0]
       .map((n) => {
         const checked = (base.weekdays || []).includes(n) ? "checked" : "";
-        return `<label><input type="checkbox" name="wd" value="${n}" ${checked} /> ${WEEKDAYS[n]}</label>`;
+        return `<label class="check-chip"><input type="checkbox" name="wd" value="${n}" ${checked} /><span>${WEEKDAYS[n]}</span></label>`;
       })
       .join("");
     openModal(`
@@ -747,9 +754,9 @@
         ${
           recurring
             ? `<div class="scope-box">
-                <p class="hint" style="margin:0 0 8px">반복 일정입니다. 적용 범위를 선택하세요.</p>
-                <label class="scope-option"><input type="radio" name="scope" value="one" checked /> 이 일정만 (${occDate})</label>
-                <label class="scope-option"><input type="radio" name="scope" value="all" /> 반복 전체</label>
+                <p class="hint scope-title">반복 일정입니다. 적용 범위를 선택하세요.</p>
+                <label class="scope-option"><input type="radio" name="scope" value="one" checked /><span>이 일정만 (${occDate})</span></label>
+                <label class="scope-option"><input type="radio" name="scope" value="all" /><span>반복 전체</span></label>
               </div>`
             : `<input type="hidden" name="scope" value="all" />`
         }
@@ -760,7 +767,10 @@
           </select>
         </label>
         <label>날짜 <input type="date" name="date" required value="${occDate}" /></label>
-        <label><input type="checkbox" name="allDay" ${ev.allDay ? "checked" : ""} /> 하루 종일 (시간 없이)</label>
+        <label class="check-row">
+          <input type="checkbox" name="allDay" ${ev.allDay ? "checked" : ""} />
+          <span>하루 종일 (시간 없이)</span>
+        </label>
         <div class="row-2" id="time-fields" style="${ev.allDay ? "display:none" : ""}">
           <label>시작 <input type="time" name="startTime" value="${ev.startTime || "09:00"}" /></label>
           <label>종료 <input type="time" name="endTime" value="${ev.endTime || "10:00"}" /></label>
@@ -777,7 +787,7 @@
           <div id="weekday-wrap" style="${base.repeat === "weekly" ? "" : "display:none"}">
             <div class="weekdays-pick">${weekdayChecks}</div>
           </div>
-          <label id="repeat-until-wrap" style="${base.repeat === "none" ? "display:none" : ""}">반복 종료일 (비우면 계속)
+          <label id="repeat-until-wrap" style="${base.repeat === "none" ? "display:none" : ""}">반복 종료일
             <input type="date" name="repeatUntil" value="${base.repeatUntil || ""}" />
           </label>
         </div>
@@ -1168,8 +1178,17 @@
       if (e.target.name === "repeat") {
         const weekdayWrap = $("#weekday-wrap");
         const untilWrap = $("#repeat-until-wrap");
+        const untilInput = document.querySelector("#event-form [name=repeatUntil]");
+        const dateInput = document.querySelector("#event-form [name=date]");
+        const eventId = document.querySelector("#event-form [name=id]")?.value;
         if (weekdayWrap) weekdayWrap.style.display = e.target.value === "weekly" ? "" : "none";
         if (untilWrap) untilWrap.style.display = e.target.value === "none" ? "none" : "";
+        if (untilInput && e.target.value !== "none") {
+          // 새 일정이거나 종료일이 비어 있으면 기본 +3개월
+          if (!eventId || !untilInput.value) {
+            untilInput.value = addMonthsYmd(dateInput?.value || ymd(state.selected), 3);
+          }
+        }
       }
       if (e.target.name === "scope") {
         const seriesFields = $("#series-fields");
