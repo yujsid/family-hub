@@ -200,6 +200,10 @@
 
   function occursOn(ev, date) {
     const day = startOfDay(date);
+    const key = ymd(day);
+    if ((ev.excludeDates || []).includes(key)) return false;
+    if (ev.overrides && ev.overrides[key]) return true;
+
     const start = parseYmd(ev.date);
     if (day < start) return false;
     if (ev.repeatUntil && day > parseYmd(ev.repeatUntil)) return false;
@@ -212,6 +216,22 @@
     }
     if (ev.repeat === "monthly") return day.getDate() === start.getDate();
     return false;
+  }
+
+  function isRecurring(ev) {
+    return Boolean(ev && ev.repeat && ev.repeat !== "none");
+  }
+
+  function getOccurrence(ev, date) {
+    const key = ymd(date);
+    const override = (ev.overrides && ev.overrides[key]) || {};
+    return {
+      ...ev,
+      ...override,
+      date: key,
+      _occurrenceDate: key,
+      _seriesRepeat: ev.repeat,
+    };
   }
 
   function eventsOn(date) {
@@ -323,16 +343,17 @@
   }
 
   function pillHtml(ev, date) {
-    const m = memberById(ev.memberId);
+    const occ = getOccurrence(ev, date);
+    const m = memberById(occ.memberId);
     const who = memberLabel(m);
-    const done = ev.kind === "todo" && isTodoDone(ev, date);
-    const kindTag = ev.kind === "todo" ? "할일" : "일정";
-    const mark = ev.kind === "todo" ? (done ? "✓ " : "○ ") : "";
-    const time = formatTimeRange(ev);
-    return `<div class="pill ${ev.kind} ${done ? "done" : ""}" style="--member:${m.color}" title="${m.name} · ${kindTag}">
+    const done = occ.kind === "todo" && isTodoDone(ev, date);
+    const kindTag = occ.kind === "todo" ? "할일" : "일정";
+    const mark = occ.kind === "todo" ? (done ? "✓ " : "○ ") : "";
+    const time = formatTimeRange(occ);
+    return `<div class="pill ${occ.kind} ${done ? "done" : ""}" style="--member:${m.color}" title="${m.name} · ${kindTag}">
       <span class="pill-kind">${kindTag}</span>
       <span class="pill-who">${who}</span>
-      <span class="pill-text">${mark}${time ? time + " " : ""}${ev.title}</span>
+      <span class="pill-text">${mark}${time ? time + " " : ""}${occ.title}</span>
     </div>`;
   }
 
@@ -408,7 +429,7 @@
 
     const allDayRow = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(start, i);
-      const allDay = eventsOn(d).filter((ev) => ev.allDay);
+      const allDay = eventsOn(d).filter((ev) => getOccurrence(ev, d).allDay);
       return `<div class="week-allday-cell" data-date="${ymd(d)}">${allDay.map((ev) => pillHtml(ev, d)).join("")}${stampPills(d)}</div>`;
     }).join("");
 
@@ -418,24 +439,25 @@
 
     const columns = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(start, i);
-      const timed = eventsOn(d).filter((ev) => !ev.allDay);
+      const timed = eventsOn(d).filter((ev) => !getOccurrence(ev, d).allDay);
       const blocks = timed
         .map((ev) => {
-          const m = memberById(ev.memberId);
-          let startMin = parseTimeMinutes(ev.startTime);
-          let endMin = parseTimeMinutes(ev.endTime || ev.startTime);
+          const occ = getOccurrence(ev, d);
+          const m = memberById(occ.memberId);
+          let startMin = parseTimeMinutes(occ.startTime);
+          let endMin = parseTimeMinutes(occ.endTime || occ.startTime);
           if (endMin <= startMin) endMin = startMin + 60;
           const clampedStart = Math.max(startMin, WEEK_START_MIN);
           const clampedEnd = Math.min(endMin, WEEK_START_MIN + WEEK_HOURS * 60);
           if (clampedEnd <= WEEK_START_MIN || clampedStart >= WEEK_START_MIN + WEEK_HOURS * 60) return "";
           const top = ((clampedStart - WEEK_START_MIN) / 60) * HOUR_PX;
           const height = Math.max(((clampedEnd - clampedStart) / 60) * HOUR_PX, 22);
-          const done = ev.kind === "todo" && isTodoDone(ev, d);
-          return `<div class="week-block ${ev.kind} ${done ? "done" : ""}" style="--member:${m.color};top:${top}px;height:${height}px" data-date="${ymd(d)}" title="${m.name} · ${formatTimeRange(ev)} · ${ev.title}">
-            <span class="pill-kind">${ev.kind === "todo" ? "할일" : "일정"}</span>
+          const done = occ.kind === "todo" && isTodoDone(ev, d);
+          return `<div class="week-block ${occ.kind} ${done ? "done" : ""}" style="--member:${m.color};top:${top}px;height:${height}px" data-date="${ymd(d)}" title="${m.name} · ${formatTimeRange(occ)} · ${occ.title}">
+            <span class="pill-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
             <span class="pill-who">${memberLabel(m)}</span>
-            <strong>${done ? "✓ " : ev.kind === "todo" ? "○ " : ""}${ev.title}</strong>
-            <small>${formatTimeRange(ev)}</small>
+            <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${occ.title}</strong>
+            <small>${formatTimeRange(occ)}</small>
           </div>`;
         })
         .join("");
@@ -482,22 +504,23 @@
     }
     const rows = items
       .map((ev) => {
-        const m = memberById(ev.memberId);
-        const time = ev.allDay ? "하루 종일" : `${ev.startTime || ""} ~ ${ev.endTime || ""}`;
-        const done = ev.kind === "todo" && isTodoDone(ev, d);
+        const occ = getOccurrence(ev, d);
+        const m = memberById(occ.memberId);
+        const time = occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`;
+        const done = occ.kind === "todo" && isTodoDone(ev, d);
         return `
-          <div class="item-row kind-${ev.kind}" style="--member:${m.color}">
-            <span class="item-kind">${ev.kind === "todo" ? "할일" : "일정"}</span>
+          <div class="item-row kind-${occ.kind}" style="--member:${m.color}">
+            <span class="item-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
             ${
-              ev.kind === "todo"
+              occ.kind === "todo"
                 ? `<input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />`
                 : `<span class="dot" style="background:${m.color};margin-top:6px"></span>`
             }
             <div class="item-body">
-              <strong>${ev.title}</strong>
-              <div class="meta">${m.name} · ${time}${ev.repeat !== "none" ? " · 반복" : ""}</div>
+              <strong>${occ.title}</strong>
+              <div class="meta">${m.name} · ${time}${isRecurring(ev) ? " · 반복" : ""}</div>
             </div>
-            <button type="button" data-edit-event="${ev.id}">수정</button>
+            <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
           </div>`;
       })
       .join("");
@@ -543,20 +566,21 @@
         items.length || stamps.length
           ? items
               .map((ev) => {
-                const m = memberById(ev.memberId);
-                const done = ev.kind === "todo" && isTodoDone(ev, d);
-                return `<div class="item-row kind-${ev.kind}" style="--member:${m.color}">
-                  <span class="item-kind">${ev.kind === "todo" ? "할일" : "일정"}</span>
+                const occ = getOccurrence(ev, d);
+                const m = memberById(occ.memberId);
+                const done = occ.kind === "todo" && isTodoDone(ev, d);
+                return `<div class="item-row kind-${occ.kind}" style="--member:${m.color}">
+                  <span class="item-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
                   ${
-                    ev.kind === "todo"
+                    occ.kind === "todo"
                       ? `<input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />`
                       : `<span class="dot" style="background:${m.color};margin-top:6px"></span>`
                   }
                   <div class="item-body">
-                    <strong>${done ? "✓ " : ev.kind === "todo" ? "○ " : ""}${ev.title}</strong>
-                    <div class="meta">${m.name} · ${ev.allDay ? "하루 종일" : `${ev.startTime || ""} ~ ${ev.endTime || ""}`}</div>
+                    <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${occ.title}</strong>
+                    <div class="meta">${m.name} · ${occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`}${isRecurring(ev) ? " · 반복" : ""}</div>
                   </div>
-                  <button type="button" data-edit-event="${ev.id}">수정</button>
+                  <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
                 </div>`;
               })
               .join("") +
@@ -685,12 +709,13 @@
     if (state.tab === "settings") renderSettings();
   }
 
-  function eventForm(existing, kind) {
-    const ev = existing || {
+  function eventForm(existing, kind, occurrenceDate) {
+    const occDate = occurrenceDate || (existing && existing.date) || ymd(state.selected);
+    const base = existing || {
       kind: kind || "schedule",
       title: "",
       memberId: "sua",
-      date: ymd(state.selected),
+      date: occDate,
       allDay: true,
       startTime: "16:00",
       endTime: "18:00",
@@ -699,9 +724,11 @@
       repeatUntil: "",
       note: "",
     };
+    const ev = existing ? getOccurrence(existing, parseYmd(occDate)) : base;
+    const recurring = isRecurring(existing);
     const weekdayChecks = [1, 2, 3, 4, 5, 6, 0]
       .map((n) => {
-        const checked = (ev.weekdays || []).includes(n) ? "checked" : "";
+        const checked = (base.weekdays || []).includes(n) ? "checked" : "";
         return `<label><input type="checkbox" name="wd" value="${n}" ${checked} /> ${WEEKDAYS[n]}</label>`;
       })
       .join("");
@@ -710,40 +737,75 @@
       <form id="event-form" class="stack" action="#" method="post">
         <input type="hidden" name="id" value="${existing ? existing.id : ""}" />
         <input type="hidden" name="kind" value="${ev.kind}" />
+        <input type="hidden" name="occurrenceDate" value="${occDate}" />
+        ${
+          recurring
+            ? `<div class="scope-box">
+                <p class="hint" style="margin:0 0 8px">반복 일정입니다. 적용 범위를 선택하세요.</p>
+                <label class="scope-option"><input type="radio" name="scope" value="one" checked /> 이 일정만 (${occDate})</label>
+                <label class="scope-option"><input type="radio" name="scope" value="all" /> 반복 전체</label>
+              </div>`
+            : `<input type="hidden" name="scope" value="all" />`
+        }
         <label>제목 <input name="title" required value="${ev.title || ""}" placeholder="예: 영어 학원, 숙제" /></label>
         <label>가족
           <select name="memberId">
             ${MEMBERS.map((m) => `<option value="${m.id}" ${m.id === ev.memberId ? "selected" : ""}>${m.name} (${m.role})</option>`).join("")}
           </select>
         </label>
-        <label>날짜 <input type="date" name="date" required value="${ev.date}" /></label>
+        <label>날짜 <input type="date" name="date" required value="${occDate}" /></label>
         <label><input type="checkbox" name="allDay" ${ev.allDay ? "checked" : ""} /> 하루 종일 (시간 없이)</label>
         <div class="row-2" id="time-fields" style="${ev.allDay ? "display:none" : ""}">
           <label>시작 <input type="time" name="startTime" value="${ev.startTime || "09:00"}" /></label>
           <label>종료 <input type="time" name="endTime" value="${ev.endTime || "10:00"}" /></label>
         </div>
-        <label>반복
-          <select name="repeat">
-            <option value="none" ${ev.repeat === "none" ? "selected" : ""}>없음</option>
-            <option value="daily" ${ev.repeat === "daily" ? "selected" : ""}>매일</option>
-            <option value="weekly" ${ev.repeat === "weekly" ? "selected" : ""}>매주 (요일 선택)</option>
-            <option value="monthly" ${ev.repeat === "monthly" ? "selected" : ""}>매월 같은 날</option>
-          </select>
-        </label>
-        <div id="weekday-wrap" style="${ev.repeat === "weekly" ? "" : "display:none"}">
-          <div class="weekdays-pick">${weekdayChecks}</div>
+        <div id="series-fields" style="${recurring ? "display:none" : ""}">
+          <label>반복
+            <select name="repeat">
+              <option value="none" ${base.repeat === "none" ? "selected" : ""}>없음</option>
+              <option value="daily" ${base.repeat === "daily" ? "selected" : ""}>매일</option>
+              <option value="weekly" ${base.repeat === "weekly" ? "selected" : ""}>매주 (요일 선택)</option>
+              <option value="monthly" ${base.repeat === "monthly" ? "selected" : ""}>매월 같은 날</option>
+            </select>
+          </label>
+          <div id="weekday-wrap" style="${base.repeat === "weekly" ? "" : "display:none"}">
+            <div class="weekdays-pick">${weekdayChecks}</div>
+          </div>
+          <label id="repeat-until-wrap" style="${base.repeat === "none" ? "display:none" : ""}">반복 종료일 (비우면 계속)
+            <input type="date" name="repeatUntil" value="${base.repeatUntil || ""}" />
+          </label>
         </div>
-        <label id="repeat-until-wrap" style="${ev.repeat === "none" ? "display:none" : ""}">반복 종료일 (비우면 계속)
-          <input type="date" name="repeatUntil" value="${ev.repeatUntil || ""}" />
-        </label>
         <label>메모 <textarea name="note" rows="2">${ev.note || ""}</textarea></label>
         <div class="modal-actions">
-          ${existing ? `<button class="danger" type="button" id="delete-event">삭제</button>` : ""}
+          ${
+            existing
+              ? recurring
+                ? `<button class="danger" type="button" id="delete-event-one">이 날만 삭제</button>
+                   <button class="danger" type="button" id="delete-event-all">전체 삭제</button>`
+                : `<button class="danger" type="button" id="delete-event-all">삭제</button>`
+              : ""
+          }
           <button type="button" id="cancel-modal">취소</button>
           <button class="primary" type="button" id="save-event">저장</button>
         </div>
       </form>
     `);
+  }
+
+  function readEventFields(form) {
+    const fd = new FormData(form);
+    return {
+      title: String(fd.get("title")).trim(),
+      memberId: fd.get("memberId"),
+      date: fd.get("date"),
+      allDay: fd.get("allDay") === "on",
+      startTime: fd.get("startTime"),
+      endTime: fd.get("endTime"),
+      repeat: fd.get("repeat") || "none",
+      weekdays: [...form.querySelectorAll("[name=wd]:checked")].map((el) => Number(el.value)),
+      repeatUntil: fd.get("repeatUntil") || "",
+      note: String(fd.get("note") || ""),
+    };
   }
 
   function saveEventFromForm(form) {
@@ -752,21 +814,57 @@
       return;
     }
     const fd = new FormData(form);
+    const id = fd.get("id");
+    const scope = fd.get("scope") || "all";
+    const occurrenceDate = fd.get("occurrenceDate") || fd.get("date");
+    const fields = readEventFields(form);
+    const existing = id ? state.events.find((x) => x.id === id) : null;
+
+    if (existing && isRecurring(existing) && scope === "one") {
+      existing.excludeDates = existing.excludeDates || [];
+      existing.overrides = existing.overrides || {};
+      const targetDate = fields.date;
+      if (targetDate !== occurrenceDate) {
+        if (!existing.excludeDates.includes(occurrenceDate)) existing.excludeDates.push(occurrenceDate);
+        delete existing.overrides[occurrenceDate];
+        if (existing.doneDates && existing.doneDates[occurrenceDate]) {
+          existing.doneDates[targetDate] = existing.doneDates[occurrenceDate];
+          delete existing.doneDates[occurrenceDate];
+        }
+      }
+      // If editing a generated occurrence on a date that still comes from series rule,
+      // override that date. Also exclude if the base series would still show old date when moved.
+      existing.overrides[targetDate] = {
+        title: fields.title,
+        memberId: fields.memberId,
+        allDay: fields.allDay,
+        startTime: fields.startTime,
+        endTime: fields.endTime,
+        note: fields.note,
+      };
+      // When date unchanged, keep occurrence in series with override only (don't exclude).
+      // When date changed, old date excluded above; new date may also match series — override covers it.
+      state.selected = parseYmd(targetDate);
+      save();
+      closeModal();
+      render();
+      toast("이 일정만 수정했습니다.");
+      return;
+    }
+
     const payload = {
-      id: fd.get("id") || uid(),
+      id: id || uid(),
       kind: fd.get("kind"),
-      title: String(fd.get("title")).trim(),
-      memberId: fd.get("memberId"),
-      date: fd.get("date"),
-      allDay: fd.get("allDay") === "on",
-      startTime: fd.get("startTime"),
-      endTime: fd.get("endTime"),
-      repeat: fd.get("repeat"),
-      weekdays: [...form.querySelectorAll("[name=wd]:checked")].map((el) => Number(el.value)),
-      repeatUntil: fd.get("repeatUntil") || "",
-      note: String(fd.get("note") || ""),
-      doneDates: (state.events.find((x) => x.id === fd.get("id")) || {}).doneDates || {},
+      ...fields,
+      doneDates: (existing && existing.doneDates) || {},
+      excludeDates: scope === "all" && fields.repeat === "none" ? [] : (existing && existing.excludeDates) || [],
+      overrides: scope === "all" && fields.repeat === "none" ? {} : (existing && existing.overrides) || {},
     };
+    if (existing && scope === "all" && fields.repeat !== "none") {
+      // Keep exceptions when editing the whole series template.
+      payload.excludeDates = existing.excludeDates || [];
+      payload.overrides = existing.overrides || {};
+    }
     const idx = state.events.findIndex((x) => x.id === payload.id);
     if (idx >= 0) state.events[idx] = payload;
     else state.events.push(payload);
@@ -775,6 +873,33 @@
     closeModal();
     render();
     toast("저장했습니다.");
+  }
+
+  function deleteEventOccurrence(scope) {
+    const form = document.getElementById("event-form");
+    if (!form) return;
+    const fd = new FormData(form);
+    const id = fd.get("id");
+    const occurrenceDate = fd.get("occurrenceDate") || fd.get("date");
+    const existing = state.events.find((x) => x.id === id);
+    if (!existing) return;
+
+    if (scope === "one" && isRecurring(existing)) {
+      existing.excludeDates = existing.excludeDates || [];
+      if (!existing.excludeDates.includes(occurrenceDate)) existing.excludeDates.push(occurrenceDate);
+      if (existing.overrides) delete existing.overrides[occurrenceDate];
+      save();
+      closeModal();
+      render();
+      toast("이 날 일정만 삭제했습니다.");
+      return;
+    }
+
+    state.events = state.events.filter((ev) => ev.id !== id);
+    save();
+    closeModal();
+    render();
+    toast(isRecurring(existing) ? "반복 일정을 모두 삭제했습니다." : "일정을 지웠습니다.");
   }
 
   async function saveStampFromForm(form) {
@@ -960,18 +1085,16 @@
         if (state.pinResolve) state.pinResolve(false);
         closeModal();
       }
-      if (e.target.id === "delete-event") {
-        const id = document.querySelector("#event-form [name=id]").value;
-        state.events = state.events.filter((ev) => ev.id !== id);
-        save();
-        closeModal();
-        render();
-        toast("일정을 지웠습니다.");
+      if (e.target.id === "delete-event" || e.target.id === "delete-event-all") {
+        deleteEventOccurrence("all");
+      }
+      if (e.target.id === "delete-event-one") {
+        deleteEventOccurrence("one");
       }
       const edit = e.target.closest("[data-edit-event]");
       if (edit) {
         const ev = state.events.find((x) => x.id === edit.dataset.editEvent);
-        if (ev) eventForm(ev, ev.kind);
+        if (ev) eventForm(ev, ev.kind, edit.dataset.occurrenceDate || ymd(state.selected));
       }
       const delStamp = e.target.closest("[data-del-stamp]");
       if (delStamp) {
@@ -1031,6 +1154,18 @@
         const untilWrap = $("#repeat-until-wrap");
         if (weekdayWrap) weekdayWrap.style.display = e.target.value === "weekly" ? "" : "none";
         if (untilWrap) untilWrap.style.display = e.target.value === "none" ? "none" : "";
+      }
+      if (e.target.name === "scope") {
+        const seriesFields = $("#series-fields");
+        const dateInput = document.querySelector("#event-form [name=date]");
+        const occInput = document.querySelector("#event-form [name=occurrenceDate]");
+        const id = document.querySelector("#event-form [name=id]")?.value;
+        const existing = state.events.find((x) => x.id === id);
+        if (seriesFields) seriesFields.style.display = e.target.value === "all" ? "" : "none";
+        if (dateInput && occInput) {
+          if (e.target.value === "all" && existing) dateInput.value = existing.date;
+          else dateInput.value = occInput.value;
+        }
       }
     });
 
