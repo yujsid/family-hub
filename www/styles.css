@@ -49,10 +49,12 @@ body {
   gap: 12px;
 }
 .brand-mascot {
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: 76px;
   object-fit: contain;
-  filter: drop-shadow(0 6px 10px rgba(120, 78, 42, 0.18));
+  background: transparent;
+  border-radius: 20px;
+  filter: drop-shadow(0 4px 8px rgba(120, 78, 42, 0.12));
   animation: peanut-bounce 2.8s ease-in-out infinite;
 }
 @keyframes peanut-bounce {
@@ -599,16 +601,19 @@ button.primary {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #fff8ef;
+  background: linear-gradient(180deg, #fffaf2 0%, #fff3e4 100%);
   border: 2px solid var(--line);
   border-radius: 18px;
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 .peanut-hint img {
-  width: 56px;
-  height: 56px;
+  width: 58px;
+  height: 58px;
   object-fit: contain;
   flex: 0 0 auto;
+  background: transparent;
+  mix-blend-mode: multiply;
+  border-radius: 14px;
 }
 .empty-state {
   display: grid;
@@ -617,12 +622,16 @@ button.primary {
   padding: 28px 16px;
   text-align: center;
   color: var(--muted);
+  background: linear-gradient(180deg, rgba(255,250,242,0.9), rgba(255,243,228,0.55));
+  border-radius: 22px;
 }
 .empty-state img {
-  width: 120px;
-  height: 120px;
+  width: 132px;
+  height: 132px;
   object-fit: contain;
-  filter: drop-shadow(0 8px 14px rgba(120, 78, 42, 0.15));
+  background: transparent;
+  mix-blend-mode: multiply;
+  filter: drop-shadow(0 6px 12px rgba(120, 78, 42, 0.1));
 }
 .empty-state p {
   margin: 0;
@@ -638,9 +647,11 @@ button.primary {
   margin-bottom: 8px;
 }
 .pin-hero img {
-  width: 110px;
-  height: 110px;
+  width: 120px;
+  height: 120px;
   object-fit: contain;
+  mix-blend-mode: multiply;
+  background: transparent;
 }
 .pin-hero h3 {
   font-family: "Jua", "Nunito", sans-serif;
@@ -790,9 +801,12 @@ input, select, textarea {
   border: 2px solid var(--line);
 }
 .toast-peanut img {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
+  mix-blend-mode: multiply;
+  background: transparent;
+  border-radius: 10px;
 }
 .toast-peanut span {
   font-weight: 800;
