@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 가족 앱 전용: 링크를 아는 사람만 쓰는 단순 규칙입니다.
+    // 공개 서비스라면 Firebase Authentication을 추가해 더 강화하세요.
+    match /families/{familyId} {
+      allow read, write: if true;
+    }
+  }
+}

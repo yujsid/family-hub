@@ -103,6 +103,11 @@
           <p class="hint">한 번 찍을 때 쌓이는 용돈입니다. 원 단위로 적어 주세요.</p>
           <form id="rates-form" class="stack" action="#" method="post"></form>
         </article>
+        <article class="card" id="firebase-status-card">
+          <h3>클라우드 연결 (Firebase)</h3>
+          <p class="hint" id="firebase-status-text">연결 상태를 확인하는 중…</p>
+          <p class="hint">설정 방법은 README의 Firebase 안내를 보세요. `firebase-config.js`에 프로젝트 값을 넣으면 가족 기기끼리 데이터가 공유됩니다.</p>
+        </article>
       </div>
     </section>
   </div>
@@ -111,6 +116,9 @@
     <div class="modal" role="dialog" aria-modal="true" id="modal"></div>
   </div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

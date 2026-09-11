@@ -16,7 +16,7 @@
   ];
 
   const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-  const STORAGE_KEY = "family-hub-v1";
+  const DEFAULT_DOC = "families/yu-family";
 
   const state = {
     tab: "calendar",
@@ -31,7 +31,15 @@
     stamps: [],
     pin: "1234",
     rates: { tidy: 500, errand: 500, clean: 500, recycle: 500, etc: 300 },
+    cloudReady: false,
+    cloudError: "",
+    saving: false,
+    applyingRemote: false,
   };
+
+  let db = null;
+  let familyRef = null;
+  let saveTimer = null;
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -76,30 +84,110 @@
     return `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
   }
 
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      state.events = data.events || [];
-      state.stamps = data.stamps || [];
-      state.pin = data.pin || "1234";
-      state.rates = { ...state.rates, ...(data.rates || {}) };
-    } catch {
-      /* keep defaults */
+  function isFirebaseConfigured() {
+    const cfg = window.FAMILY_HUB_FIREBASE;
+    return Boolean(cfg && cfg.apiKey && !String(cfg.apiKey).startsWith("PASTE_"));
+  }
+
+  function payloadFromState() {
+    return {
+      events: state.events,
+      stamps: state.stamps,
+      pin: state.pin,
+      rates: state.rates,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+  }
+
+  function applyRemoteData(data) {
+    state.applyingRemote = true;
+    state.events = Array.isArray(data.events) ? data.events : [];
+    state.stamps = Array.isArray(data.stamps) ? data.stamps : [];
+    state.pin = data.pin || "1234";
+    state.rates = { ...state.rates, ...(data.rates || {}) };
+    render();
+    state.applyingRemote = false;
+  }
+
+  function updateCloudStatus() {
+    const el = $("#firebase-status-text");
+    if (!el) return;
+    if (!isFirebaseConfigured()) {
+      el.textContent = "firebase-config.js에 Firebase 웹 설정을 넣어야 클라우드에 저장됩니다. 지금은 연결되지 않았습니다.";
+      return;
     }
+    if (state.cloudError) {
+      el.textContent = `연결 오류: ${state.cloudError}`;
+      return;
+    }
+    if (state.cloudReady) {
+      el.textContent = "Firebase에 연결되었습니다. 가족 기기끼리 일정이 실시간으로 동기화됩니다.";
+      return;
+    }
+    el.textContent = "Firebase에 연결하는 중…";
   }
 
   function save() {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        events: state.events,
-        stamps: state.stamps,
-        pin: state.pin,
-        rates: state.rates,
-      })
-    );
+    if (!familyRef || state.applyingRemote) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        state.saving = true;
+        await familyRef.set(payloadFromState(), { merge: true });
+        state.cloudError = "";
+      } catch (err) {
+        state.cloudError = err.message || String(err);
+        toast("클라우드 저장에 실패했습니다.");
+        updateCloudStatus();
+      } finally {
+        state.saving = false;
+      }
+    }, 250);
+  }
+
+  async function initCloud() {
+    updateCloudStatus();
+    if (!isFirebaseConfigured()) return;
+    if (typeof firebase === "undefined") {
+      state.cloudError = "Firebase SDK를 불러오지 못했습니다.";
+      updateCloudStatus();
+      return;
+    }
+    try {
+      firebase.initializeApp(window.FAMILY_HUB_FIREBASE);
+      db = firebase.firestore();
+      const docPath = window.FAMILY_HUB_DOC || DEFAULT_DOC;
+      const [col, id] = docPath.split("/");
+      familyRef = db.collection(col).doc(id);
+
+      const snap = await familyRef.get();
+      if (!snap.exists) {
+        await familyRef.set(payloadFromState());
+      } else {
+        applyRemoteData(snap.data() || {});
+      }
+
+      familyRef.onSnapshot(
+        (doc) => {
+          if (!doc.exists) return;
+          if (state.saving) return;
+          applyRemoteData(doc.data() || {});
+          state.cloudReady = true;
+          state.cloudError = "";
+          updateCloudStatus();
+        },
+        (err) => {
+          state.cloudError = err.message || String(err);
+          updateCloudStatus();
+        }
+      );
+
+      state.cloudReady = true;
+      updateCloudStatus();
+    } catch (err) {
+      state.cloudError = err.message || String(err);
+      updateCloudStatus();
+    }
   }
 
   function memberById(id) {
@@ -583,6 +671,7 @@
           <input type="number" min="0" step="50" name="${c.id}" value="${state.rates[c.id] || 0}" />
         </label>`
       ).join("") + `<button class="primary" type="button" id="save-rates">금액 저장</button>`;
+    updateCloudStatus();
   }
 
   function render() {
@@ -979,7 +1068,9 @@
     }, true);
   }
 
-  load();
-  bind();
-  render();
+  initCloud().then(() => {
+    bind();
+    render();
+    updateCloudStatus();
+  });
 })();
