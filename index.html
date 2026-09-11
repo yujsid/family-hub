@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f4efe6" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>우리 가족 허브</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">유 · 윤 가족</p>
+        <h1>우리 가족 허브</h1>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="calendar" type="button">달력</button>
+        <button class="tab" data-tab="stamps" type="button"><span class="tab-full">용돈 도장</span><span class="tab-short">용돈</span></button>
+        <button class="tab" data-tab="settle" type="button"><span class="tab-full">월말 정산</span><span class="tab-short">정산</span></button>
+        <button class="tab" data-tab="settings" type="button">설정</button>
+      </nav>
+    </header>
+
+    <section id="view-calendar" class="view is-active">
+      <div class="toolbar">
+        <div class="month-nav">
+          <button id="prev-period" type="button" aria-label="이전">‹</button>
+          <h2 id="period-title"></h2>
+          <button id="next-period" type="button" aria-label="다음">›</button>
+          <button id="today-btn" class="ghost" type="button">오늘</button>
+        </div>
+        <div class="view-switch" role="group" aria-label="보기">
+          <button type="button" data-cal-view="day">일</button>
+          <button type="button" data-cal-view="week">주</button>
+          <button type="button" class="is-active" data-cal-view="month">월</button>
+        </div>
+        <div class="actions calendar-actions">
+          <button id="add-event-btn" class="primary" type="button">일정 추가</button>
+          <button id="add-todo-btn" type="button">할 일 추가</button>
+          <button id="add-stamp-calendar-btn" type="button">용돈 도장 추가</button>
+        </div>
+      </div>
+
+      <div class="filters-bar">
+        <div class="type-filters" id="type-filters"></div>
+        <div class="member-filters" id="member-filters"></div>
+      </div>
+      <div class="calendar-with-panel">
+        <div id="calendar-root"></div>
+        <aside class="day-panel" id="day-panel"></aside>
+      </div>
+    </section>
+
+    <section id="view-stamps" class="view">
+      <div class="toolbar">
+        <div class="month-nav">
+          <button id="stamp-prev" type="button">‹</button>
+          <h2 id="stamp-month-title"></h2>
+          <button id="stamp-next" type="button">›</button>
+        </div>
+        <button id="add-stamp-btn" class="primary" type="button">도장 찍기</button>
+      </div>
+      <p class="hint">도장은 비밀번호를 입력한 뒤에만 찍을 수 있어요. 달력에도 같이 표시됩니다.</p>
+      <div id="stamp-board" class="stamp-board"></div>
+    </section>
+
+    <section id="view-settle" class="view">
+      <div class="toolbar">
+        <div class="month-nav">
+          <button id="settle-prev" type="button">‹</button>
+          <h2 id="settle-month-title"></h2>
+          <button id="settle-next" type="button">›</button>
+        </div>
+      </div>
+      <p class="hint">항목별 단가 × 도장 개수로 월말 용돈을 계산합니다.</p>
+      <div id="settle-table"></div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <div class="card-grid">
+        <article class="card">
+          <h3>도장 비밀번호</h3>
+          <p class="hint">처음 비밀번호는 1234 입니다. 숫자만 사용할 수 있어요.</p>
+          <form id="pin-form" class="stack" action="#" method="post">
+            <label>현재 비밀번호
+              <input type="password" inputmode="numeric" name="current" maxlength="8" required />
+            </label>
+            <label>새 비밀번호
+              <input type="password" inputmode="numeric" name="next" maxlength="8" required />
+            </label>
+            <label>새 비밀번호 확인
+              <input type="password" inputmode="numeric" name="confirm" maxlength="8" required />
+            </label>
+            <button class="primary" type="button" id="save-pin">비밀번호 바꾸기</button>
+          </form>
+        </article>
+        <article class="card">
+          <h3>도장 항목별 금액</h3>
+          <p class="hint">한 번 찍을 때 쌓이는 용돈입니다. 원 단위로 적어 주세요.</p>
+          <form id="rates-form" class="stack" action="#" method="post"></form>
+        </article>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" id="modal"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
