@@ -37,6 +37,21 @@ GitHub에서 확인/설정:
 2. 메뉴(⋮) → **홈 화면에 추가** 또는 **앱 설치**
 3. 홈 화면 아이콘으로 실행하면 일반 앱처럼 전체 화면으로 열립니다
 
+## 4) Android APK 설치 파일
+
+GitHub Actions가 APK를 자동 빌드합니다.
+
+- 릴리스 목록: https://github.com/yujsid/family-hub/releases
+- 파일 이름: `app-debug.apk`
+- 설치: 폰으로 받아 실행 → **알 수 없는 앱 설치** 허용 후 설치
+
+로컬에서 빌드하려면 Android Studio / SDK가 필요합니다.
+
+```bash
+npm install
+npm run build:apk
+```
+
 ## 로컬에서 열기
 `index.html`을 더블클릭하거나 로컬 서버로 열면 됩니다. Firebase 설정이 있어야 데이터가 클라우드에 저장됩니다.
 PWA 설치는 HTTPS 주소(GitHub Pages)에서만 가능합니다.

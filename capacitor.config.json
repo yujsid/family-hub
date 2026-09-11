@@ -1,0 +1,11 @@
+{
+  "appId": "com.yujsid.familyhub",
+  "appName": "가족허브",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

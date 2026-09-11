@@ -6,3 +6,15 @@ Thumbs.db
 serve.ps1
 .vscode/
 .idea/
+node_modules/
+dist/
+*.apk
+*.aab
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.idea/
+android/*.iml
+android/app/*.iml
