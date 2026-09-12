@@ -1192,6 +1192,14 @@
         form.reset();
         toast("비밀번호를 바꿨습니다.");
       }
+      if (e.target.id === "reset-pin") {
+        if (!window.confirm("설정·용돈 비밀번호를 1234로 초기화할까요?")) return;
+        state.pin = "1234";
+        save();
+        const form = document.getElementById("pin-form");
+        if (form) form.reset();
+        toast("비밀번호를 1234로 초기화했습니다.");
+      }
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
         const fd = new FormData(form);
