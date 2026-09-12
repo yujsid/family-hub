@@ -1602,6 +1602,8 @@
       render();
       if (document.querySelector(".day-modal")) openDayDetailModal(state.selected);
     });
+
+    $("#modal-backdrop").addEventListener("click", (e) => {
       if (e.target === $("#modal-backdrop")) {
         if (state.pinResolve) state.pinResolve(false);
         closeModal();
