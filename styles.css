@@ -838,6 +838,17 @@ input[type="radio"] {
   text-align: center;
   min-height: 36px;
 }
+.pin-input {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  margin: 8px auto 0;
+  text-align: center;
+  letter-spacing: 0.45em;
+  font-size: 22px;
+  font-weight: 800;
+  padding: 12px 14px;
+}
 
 .toast {
   position: fixed;

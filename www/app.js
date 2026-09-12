@@ -1069,20 +1069,69 @@
       state.pinResolve = resolve;
       openModal(`
         <h3>${title}</h3>
-        <p class="hint">도장과 같은 숫자 비밀번호를 입력하세요.</p>
-        <div class="pin-dots" id="pin-dots"></div>
+        <p class="hint">숫자 비밀번호를 입력하세요. 키보드로도 입력할 수 있어요.</p>
+        <div class="pin-dots" id="pin-dots" aria-hidden="true"></div>
+        <input
+          id="pin-input"
+          class="pin-input"
+          type="password"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="8"
+          autocomplete="one-time-code"
+          enterkeyhint="done"
+          aria-label="비밀번호"
+        />
         <div class="pin-pad">
           ${[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "OK"].map((n) => `<button type="button" data-pin="${n}">${n}</button>`).join("")}
         </div>
         <div class="modal-actions"><button type="button" id="cancel-modal">취소</button></div>
       `);
       updatePinDots();
+      const input = $("#pin-input");
+      if (input) {
+        requestAnimationFrame(() => input.focus());
+      }
     });
+  }
+
+  function syncPinInput() {
+    const input = $("#pin-input");
+    if (input && input.value !== state.pinBuffer) input.value = state.pinBuffer;
+  }
+
+  function submitPinBuffer() {
+    if (!state.pinResolve) return;
+    const ok = state.pinBuffer === state.pin;
+    const resolve = state.pinResolve;
+    closeModal();
+    resolve(ok);
+    if (!ok) toast("비밀번호가 올바르지 않습니다.");
+  }
+
+  function applyPinKey(v) {
+    if (!state.pinResolve) return false;
+    if (v === "C") {
+      state.pinBuffer = "";
+    } else if (v === "Backspace") {
+      state.pinBuffer = state.pinBuffer.slice(0, -1);
+    } else if (v === "OK" || v === "Enter") {
+      submitPinBuffer();
+      return true;
+    } else if (/^\d$/.test(String(v)) && state.pinBuffer.length < 8) {
+      state.pinBuffer += String(v);
+    } else {
+      return false;
+    }
+    syncPinInput();
+    updatePinDots();
+    return true;
   }
 
   function updatePinDots() {
     const el = $("#pin-dots");
     if (el) el.textContent = "●".repeat(state.pinBuffer.length) || "○";
+    syncPinInput();
   }
 
   function shiftPeriod(dir) {
@@ -1259,20 +1308,49 @@
 
       const pinBtn = e.target.closest("[data-pin]");
       if (pinBtn) {
-        const v = pinBtn.dataset.pin;
-        if (v === "C") state.pinBuffer = "";
-        else if (v === "OK") {
-          const ok = state.pinBuffer === state.pin;
-          const resolve = state.pinResolve;
-          closeModal();
-          if (resolve) resolve(ok);
-          if (!ok) toast("비밀번호가 올바르지 않습니다.");
-          return;
-        } else if (state.pinBuffer.length < 8) state.pinBuffer += v;
-        updatePinDots();
+        applyPinKey(pinBtn.dataset.pin);
+        const input = $("#pin-input");
+        if (input) input.focus();
       }
     });
 
+    document.addEventListener("keydown", (e) => {
+      if (!state.pinResolve) return;
+      if (e.target && (e.target.tagName === "TEXTAREA" || (e.target.tagName === "INPUT" && e.target.id !== "pin-input"))) {
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        const resolve = state.pinResolve;
+        closeModal();
+        if (resolve) resolve(false);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyPinKey("OK");
+        return;
+      }
+      if (e.key === "Backspace") {
+        // pin-input handles its own backspace via input event; avoid double-delete
+        if (e.target && e.target.id === "pin-input") return;
+        e.preventDefault();
+        applyPinKey("Backspace");
+        return;
+      }
+      if (/^\d$/.test(e.key)) {
+        if (e.target && e.target.id === "pin-input") return;
+        e.preventDefault();
+        applyPinKey(e.key);
+      }
+    });
+
+    document.body.addEventListener("input", (e) => {
+      if (e.target.id !== "pin-input" || !state.pinResolve) return;
+      state.pinBuffer = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
+      e.target.value = state.pinBuffer;
+      updatePinDots();
+    });
     document.body.addEventListener("change", (e) => {
       const box = e.target.closest("[data-toggle-todo]");
       if (!box) return;
