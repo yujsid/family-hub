@@ -355,9 +355,11 @@
     const types = [
       { id: "schedule", label: "일정", icon: "📅" },
       { id: "todo", label: "할 일", icon: "☑" },
-      { id: "stamp", label: "용돈 도장", icon: "💮" },
+      { id: "stamp", label: "용돈", icon: "💮" },
     ];
-    $("#type-filters").innerHTML =
+    const el = $("#type-filters");
+    if (!el) return;
+    el.innerHTML =
       `<span class="filter-label">보기</span>` +
       types
         .map(
@@ -372,7 +374,7 @@
   }
 
   function renderMemberFilters() {
-    $("#member-filters").innerHTML =
+    const html =
       `<span class="filter-label">가족</span>` +
       MEMBERS.map(
         (m) => `
@@ -382,6 +384,9 @@
         ${m.name}<span class="chip-role"> (${m.role})</span>
       </label>`
       ).join("");
+    document.querySelectorAll("[data-member-filters]").forEach((el) => {
+      el.innerHTML = html;
+    });
   }
 
   function periodTitle() {
@@ -614,64 +619,122 @@
     return `<div class="day-list">${rows}${stampRows}</div>`;
   }
 
-  function renderDayPanel() {
-    const d = state.selected;
+  function dayItemsHtml(d) {
     const items = eventsOn(d);
     const stamps = stampsOn(d);
-    $("#day-panel").innerHTML = `
-      <div class="day-panel-head">
+    if (!items.length && !stamps.length) {
+      return emptyState("아직 비어 있어요. 일정, 할 일, 용돈을 추가해 보세요.");
+    }
+    const rows = items
+      .map((ev) => {
+        const occ = getOccurrence(ev, d);
+        const m = memberById(occ.memberId);
+        const done = occ.kind === "todo" && isTodoDone(ev, d);
+        return `<div class="item-row kind-${occ.kind}${done ? " is-done" : ""}" style="--member:${m.color}">
+          <span class="item-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
+          ${
+            occ.kind === "todo"
+              ? `<input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />`
+              : `<span class="dot" style="background:${m.color};margin-top:6px"></span>`
+          }
+          <div class="item-body">
+            <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${esc(occ.title)}</strong>
+            <div class="meta">${esc(m.name)} · ${occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`}${isRecurring(ev) ? " · 반복" : ""}</div>
+          </div>
+          <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
+        </div>`;
+      })
+      .join("");
+    const stampRows = stamps
+      .map(
+        (s) => `<div class="item-row kind-stamp" style="--member:${memberById(s.memberId).color}">
+          <span class="item-kind">도장</span>
+          <span>${categoryById(s.categoryId).emoji}</span>
+          <div class="item-body"><strong>${esc(categoryById(s.categoryId).name)}</strong>
+          <div class="meta">${esc(memberById(s.memberId).name)}${s.note ? " · " + esc(s.note) : ""}</div></div>
+          <button class="danger" type="button" data-del-stamp="${s.id}">삭제</button>
+        </div>`
+      )
+      .join("");
+    return `${rows}${stampRows}`;
+  }
+
+  function openDayDetailModal(date) {
+    const d = startOfDay(date);
+    state.selected = d;
+    openModal(`
+      <div class="day-modal">
         <h3>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})</h3>
         <div class="panel-actions">
           <button type="button" id="panel-add-event">일정</button>
           <button type="button" id="panel-add-todo">할 일</button>
-          <button type="button" id="panel-add-stamp">도장</button>
+          <button type="button" id="panel-add-stamp">용돈</button>
         </div>
+        <div class="legend">
+          <span class="legend-type schedule">일정</span>
+          <span class="legend-type todo">할 일</span>
+          <span class="legend-type stamp">용돈</span>
+          <span>○ 미완료 · ✓ 완료</span>
+        </div>
+        <div class="day-panel-body day-list">${dayItemsHtml(d)}</div>
+        <div class="modal-actions"><button type="button" id="cancel-modal">닫기</button></div>
       </div>
-      <div class="legend">
-        <span class="legend-type schedule">일정</span>
-        <span class="legend-type todo">할 일</span>
-        <span class="legend-type stamp">도장</span>
-        ${MEMBERS.map((m) => `<span><span class="dot" style="background:${m.color}"></span> ${m.name}</span>`).join("")}
-        <span>○ 미완료 · ✓ 완료</span>
+    `);
+  }
+
+  function todosOn(date) {
+    return state.events
+      .filter((ev) => ev.kind === "todo" && occursOn(ev, date) && state.memberFilter[ev.memberId])
+      .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+  }
+
+  function todoRowHtml(ev, d, { overdue = false } = {}) {
+    const occ = getOccurrence(ev, d);
+    const m = memberById(occ.memberId);
+    const done = isTodoDone(ev, d);
+    const time = occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`;
+    return `<div class="item-row kind-todo${done ? " is-done" : ""}${overdue && !done ? " is-overdue" : ""}" style="--member:${m.color}">
+      <span class="item-kind">할일</span>
+      <input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />
+      <div class="item-body">
+        <strong>${done ? "✓ " : "○ "}${esc(occ.title)}</strong>
+        <div class="meta">${esc(m.name)} · ${time}${isRecurring(ev) ? " · 반복" : ""}${overdue && !done ? " · 지남" : ""}</div>
       </div>
-      <div class="day-panel-body">
-      ${
-        items.length || stamps.length
-          ? items
-              .map((ev) => {
-                const occ = getOccurrence(ev, d);
-                const m = memberById(occ.memberId);
-                const done = occ.kind === "todo" && isTodoDone(ev, d);
-                return `<div class="item-row kind-${occ.kind}" style="--member:${m.color}">
-                  <span class="item-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
-                  ${
-                    occ.kind === "todo"
-                      ? `<input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />`
-                      : `<span class="dot" style="background:${m.color};margin-top:6px"></span>`
-                  }
-                  <div class="item-body">
-                    <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${occ.title}</strong>
-                    <div class="meta">${m.name} · ${occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`}${isRecurring(ev) ? " · 반복" : ""}</div>
-                  </div>
-                  <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
-                </div>`;
-              })
-              .join("") +
-            stamps
-              .map(
-                (s) => `<div class="item-row kind-stamp" style="--member:${memberById(s.memberId).color}">
-                <span class="item-kind">도장</span>
-                <span>${categoryById(s.categoryId).emoji}</span>
-                <div class="item-body"><strong>${categoryById(s.categoryId).name}</strong>
-                <div class="meta">${memberById(s.memberId).name}${s.note ? " · " + s.note : ""}</div></div>
-                <button class="danger" type="button" data-del-stamp="${s.id}">삭제</button>
-              </div>`
-              )
-              .join("")
-          : emptyState("아직 비어 있어요. 일정, 할 일, 용돈 도장을 추가해 보세요.")
-      }
-      </div>
-    `;
+      <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
+    </div>`;
+  }
+
+  function renderTodos() {
+    const title = $("#todo-month-title");
+    const root = $("#todo-list-root");
+    if (!title || !root) return;
+    const cursor = state.cursor;
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    title.textContent = monthLabel(cursor);
+    const today = startOfDay(new Date());
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const sections = [];
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = startOfDay(new Date(year, month, day));
+      const list = todosOn(d);
+      if (!list.length) continue;
+      const isPast = d < today;
+      const isToday = sameDay(d, today);
+      sections.push(`<section class="todo-day${isPast ? " is-past" : ""}${isToday ? " is-today" : ""}" data-date="${ymd(d)}">
+        <h3 class="todo-day-title">
+          ${month + 1}월 ${day}일 (${WEEKDAYS[d.getDay()]})
+          ${isToday ? '<span class="todo-badge">오늘</span>' : ""}
+          ${isPast ? '<span class="todo-badge is-past">지난 날</span>' : ""}
+        </h3>
+        <div class="day-list">${list.map((ev) => todoRowHtml(ev, d, { overdue: isPast })).join("")}</div>
+      </section>`);
+    }
+
+    root.innerHTML = sections.length
+      ? sections.join("")
+      : emptyState("이달에 할 일이 없어요. 위에서 추가해 보세요.");
   }
 
   function renderCalendar() {
@@ -683,7 +746,6 @@
     if (state.calView === "month") root.innerHTML = renderMonth();
     if (state.calView === "week") root.innerHTML = renderWeek();
     if (state.calView === "day") root.innerHTML = renderDay();
-    renderDayPanel();
   }
 
   function stampsInMonth(memberId, year, month) {
@@ -907,6 +969,7 @@
     renderTypeFilters();
     renderMemberFilters();
     if (state.tab === "calendar") renderCalendar();
+    if (state.tab === "todos") renderTodos();
     if (state.tab === "stamps") renderStampBoard();
     if (state.tab === "talk") renderTalk();
     if (state.tab === "settings") renderSettings();
@@ -1146,7 +1209,7 @@
   function stampForm(presetMember, presetCat) {
     const defaultKid = getPreferredMemberId(ALLOWANCE_MEMBERS);
     openModal(`
-      <h3>용돈 도장 찍기</h3>
+      <h3>용돈 찍기</h3>
       <form id="stamp-form" class="stack" action="#" method="post">
         <label>날짜 <input type="date" name="date" required value="${ymd(state.selected)}" /></label>
         <label>가족
@@ -1286,6 +1349,7 @@
     });
     $("#add-event-btn").addEventListener("click", () => eventForm(null, "schedule"));
     $("#add-todo-btn").addEventListener("click", () => eventForm(null, "todo"));
+    $("#add-todo-list-btn").addEventListener("click", () => eventForm(null, "todo"));
     $("#add-stamp-calendar-btn").addEventListener("click", () => stampForm());
     $("#add-stamp-btn").addEventListener("click", () => stampForm());
     $("#add-post-btn").addEventListener("click", () => postForm());
@@ -1297,6 +1361,19 @@
       state.cursor.setMonth(state.cursor.getMonth() + 1);
       render();
     });
+    $("#todo-prev").addEventListener("click", () => {
+      state.cursor.setMonth(state.cursor.getMonth() - 1);
+      render();
+    });
+    $("#todo-next").addEventListener("click", () => {
+      state.cursor.setMonth(state.cursor.getMonth() + 1);
+      render();
+    });
+    $("#todo-today-btn").addEventListener("click", () => {
+      state.cursor = startOfDay(new Date());
+      state.selected = state.cursor;
+      render();
+    });
 
     $("#type-filters").addEventListener("change", (e) => {
       const id = e.target.dataset.type;
@@ -1305,7 +1382,7 @@
       render();
     });
 
-    $("#member-filters").addEventListener("change", (e) => {
+    document.body.addEventListener("change", (e) => {
       const id = e.target.dataset.member;
       if (!id) return;
       state.memberFilter[id] = e.target.checked;
@@ -1314,10 +1391,12 @@
 
     document.body.addEventListener("click", async (e) => {
       const cell = e.target.closest("[data-date]");
-      if (cell && !e.target.closest("button") && !e.target.closest("input")) {
+      if (cell && !e.target.closest("button") && !e.target.closest("input") && !e.target.closest(".todo-day")) {
         state.selected = parseYmd(cell.dataset.date);
         if (state.calView === "day") state.cursor = state.selected;
+        const openModalDetail = state.tab === "calendar" && state.calView !== "day";
         render();
+        if (openModalDetail) openDayDetailModal(state.selected);
         return;
       }
       if (e.target.id === "panel-add-event") eventForm(null, "schedule");
@@ -1521,9 +1600,8 @@
       else delete ev.doneDates[box.dataset.date];
       save();
       render();
+      if (document.querySelector(".day-modal")) openDayDetailModal(state.selected);
     });
-
-    $("#modal-backdrop").addEventListener("click", (e) => {
       if (e.target === $("#modal-backdrop")) {
         if (state.pinResolve) state.pinResolve(false);
         closeModal();

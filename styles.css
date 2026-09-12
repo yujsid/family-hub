@@ -470,6 +470,68 @@ button.primary {
   align-items: start;
   grid-template-columns: 1fr;
 }
+.day-modal .panel-actions {
+  margin: 8px 0 4px;
+}
+.day-modal .day-panel-body {
+  margin: 8px 0 12px;
+  max-height: min(55vh, 420px);
+  overflow: auto;
+}
+.todo-list-root {
+  display: grid;
+  gap: 14px;
+}
+.todo-day {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+.todo-day.is-today {
+  border-color: color-mix(in srgb, var(--coral) 45%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--coral) 18%, transparent);
+}
+.todo-day-title {
+  margin: 0 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-family: "Jua", sans-serif;
+}
+.todo-badge {
+  font-family: "Nunito", sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--coral) 18%, #fff);
+  color: var(--ink);
+}
+.todo-badge.is-past {
+  background: #ffe4e1;
+  color: #b42318;
+}
+.item-row.kind-todo.is-overdue,
+.todo-day.is-past .item-row.kind-todo:not(.is-done) {
+  border-left-color: #c62828;
+  background: #fff1f0;
+}
+.item-row.kind-todo.is-overdue strong,
+.todo-day.is-past .item-row.kind-todo:not(.is-done) strong,
+.item-row.kind-todo.is-overdue .meta,
+.todo-day.is-past .item-row.kind-todo:not(.is-done) .meta {
+  color: #b42318;
+}
+.item-row.kind-todo.is-done {
+  opacity: 0.72;
+}
+.item-row.kind-todo.is-done strong {
+  text-decoration: line-through;
+}
 .day-panel {
   margin-top: 0;
   background: var(--paper);
@@ -906,16 +968,16 @@ input[type="radio"] {
     bottom: 0;
     z-index: 15;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
     border-radius: 18px 18px 0 0;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
     background: var(--paper);
     box-shadow: 0 -10px 28px rgba(62, 48, 32, 0.1);
   }
   .tab {
-    padding: 12px 4px;
-    font-size: 13px;
+    padding: 10px 2px;
+    font-size: 12px;
     min-height: 44px;
     text-align: center;
   }
@@ -936,15 +998,17 @@ input[type="radio"] {
     font-size: 16px;
   }
   .month-nav #today-btn,
+  .month-nav #todo-today-btn,
   .month-nav #stamp-prev + h2,
   .view-switch,
   .actions {
     width: 100%;
   }
-  .month-nav #today-btn {
+  .month-nav #today-btn,
+  .month-nav #todo-today-btn {
     grid-column: 1 / -1;
   }
-  .month-nav button:not(#today-btn) {
+  .month-nav button:not(#today-btn):not(#todo-today-btn) {
     width: 44px;
     min-height: 44px;
     padding: 0;

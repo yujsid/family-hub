@@ -28,8 +28,9 @@
         </div>
       </div>
       <nav class="tabs" role="tablist">
-        <button class="tab is-active" data-tab="calendar" type="button">달력</button>
-        <button class="tab" data-tab="stamps" type="button"><span class="tab-full">용돈 도장</span><span class="tab-short">용돈</span></button>
+        <button class="tab is-active" data-tab="calendar" type="button">일정</button>
+        <button class="tab" data-tab="todos" type="button">할일</button>
+        <button class="tab" data-tab="stamps" type="button">용돈</button>
         <button class="tab" data-tab="talk" type="button">대화</button>
         <button class="tab" data-tab="settings" type="button">설정</button>
       </nav>
@@ -51,18 +52,32 @@
         <div class="actions calendar-actions">
           <button id="add-event-btn" class="primary" type="button">일정 추가</button>
           <button id="add-todo-btn" type="button">할 일 추가</button>
-          <button id="add-stamp-calendar-btn" type="button">용돈 도장 추가</button>
+          <button id="add-stamp-calendar-btn" type="button">용돈 추가</button>
         </div>
       </div>
 
       <div class="filters-bar">
         <div class="type-filters" id="type-filters"></div>
-        <div class="member-filters" id="member-filters"></div>
+        <div class="member-filters" data-member-filters></div>
       </div>
-      <div class="calendar-with-panel">
-        <div id="calendar-root"></div>
-        <aside class="day-panel" id="day-panel"></aside>
+      <div id="calendar-root"></div>
+    </section>
+
+    <section id="view-todos" class="view">
+      <div class="toolbar">
+        <div class="month-nav">
+          <button id="todo-prev" type="button" aria-label="이전 달">‹</button>
+          <h2 id="todo-month-title"></h2>
+          <button id="todo-next" type="button" aria-label="다음 달">›</button>
+          <button id="todo-today-btn" class="ghost" type="button">오늘</button>
+        </div>
+        <button id="add-todo-list-btn" class="primary" type="button">할 일 추가</button>
       </div>
+      <p class="hint">날짜별 할 일 목록입니다. 오늘보다 지난 미완료 할 일은 빨간색으로 표시됩니다.</p>
+      <div class="filters-bar">
+        <div class="member-filters" data-member-filters></div>
+      </div>
+      <div id="todo-list-root" class="todo-list-root"></div>
     </section>
 
     <section id="view-stamps" class="view">
@@ -74,7 +89,7 @@
         </div>
         <button id="add-stamp-btn" class="primary" type="button">도장 찍기</button>
       </div>
-      <p class="hint">도장은 비밀번호를 입력한 뒤에만 찍을 수 있어요. 달력에도 같이 표시됩니다.</p>
+      <p class="hint">도장은 비밀번호를 입력한 뒤에만 찍을 수 있어요. 일정에도 같이 표시됩니다.</p>
       <div id="stamp-board" class="stamp-board"></div>
     </section>
 
