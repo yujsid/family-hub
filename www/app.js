@@ -12,8 +12,10 @@
     { id: "errand", name: "심부름하기", emoji: "🏃" },
     { id: "clean", name: "청소하기", emoji: "✨" },
     { id: "recycle", name: "분리수거하기", emoji: "♻️" },
+    { id: "laundry", name: "빨래기기", emoji: "🧺" },
     { id: "etc", name: "기타", emoji: "⭐" },
   ];
+  const DEFAULT_RATES = { tidy: 500, errand: 500, clean: 500, recycle: 500, laundry: 500, etc: 300 };
 
   const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
   const DEFAULT_DOC = "families/yu-family";
@@ -31,7 +33,8 @@
     stamps: [],
     posts: [],
     pin: "1234",
-    rates: { tidy: 500, errand: 500, clean: 500, recycle: 500, etc: 300 },
+    categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
+    rates: { ...DEFAULT_RATES },
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -97,9 +100,23 @@
       stamps: state.stamps,
       posts: state.posts,
       pin: state.pin,
+      categories: state.categories,
       rates: state.rates,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
+  }
+
+  function normalizeCategories(list) {
+    if (!Array.isArray(list) || !list.length) {
+      return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+    }
+    return list
+      .map((c) => ({
+        id: String(c.id || uid()),
+        name: String(c.name || "새 항목").trim() || "새 항목",
+        emoji: String(c.emoji || "⭐").trim() || "⭐",
+      }))
+      .filter((c) => c.id);
   }
 
   function applyRemoteData(data) {
@@ -108,7 +125,11 @@
     state.stamps = Array.isArray(data.stamps) ? data.stamps : [];
     state.posts = Array.isArray(data.posts) ? data.posts : [];
     state.pin = data.pin || "1234";
-    state.rates = { ...state.rates, ...(data.rates || {}) };
+    state.categories = normalizeCategories(data.categories);
+    state.rates = { ...DEFAULT_RATES, ...(data.rates || {}) };
+    state.categories.forEach((c) => {
+      if (state.rates[c.id] == null) state.rates[c.id] = 500;
+    });
     render();
     state.applyingRemote = false;
   }
@@ -222,7 +243,7 @@
   }
 
   function categoryById(id) {
-    return DEFAULT_CATEGORIES.find((c) => c.id === id);
+    return state.categories.find((c) => c.id === id) || { id, name: "삭제된 항목", emoji: "❓" };
   }
 
   function occursOn(ev, date) {
@@ -657,7 +678,7 @@
     $("#stamp-month-title").textContent = monthLabel(d);
     $("#stamp-board").innerHTML = ALLOWANCE_MEMBERS.map((m) => {
       const list = stampsInMonth(m.id, d.getFullYear(), d.getMonth());
-      const cats = DEFAULT_CATEGORIES.map((c) => {
+      const cats = state.categories.map((c) => {
         const n = list.filter((s) => s.categoryId === c.id).length;
         const won = n * (state.rates[c.id] || 0);
         return `<button class="stamp-btn" type="button" data-quick-stamp="${m.id}" data-cat="${c.id}">
@@ -793,13 +814,58 @@
   }
 
   function renderSettings() {
-    $("#rates-form").innerHTML =
-      DEFAULT_CATEGORIES.map(
-        (c) => `<label>${c.emoji} ${c.name}
-          <input type="number" min="0" step="50" name="${c.id}" value="${state.rates[c.id] || 0}" />
-        </label>`
-      ).join("") + `<button class="primary" type="button" id="save-rates">금액 저장</button>`;
+    const rows = state.categories
+      .map(
+        (c) => `<div class="cat-edit-row" data-cat-id="${esc(c.id)}">
+          <input class="cat-emoji" name="emoji" value="${esc(c.emoji)}" maxlength="4" aria-label="이모지" />
+          <input class="cat-name" name="name" value="${esc(c.name)}" maxlength="20" required aria-label="항목 이름" />
+          <input class="cat-rate" type="number" name="rate" min="0" step="50" value="${state.rates[c.id] || 0}" aria-label="금액" />
+          <span class="cat-won">원</span>
+          <button class="danger tiny" type="button" data-del-cat="${esc(c.id)}">삭제</button>
+        </div>`
+      )
+      .join("");
+    $("#rates-form").innerHTML = `
+      <div class="cat-edit-head"><span>이모지</span><span>항목 이름</span><span>금액</span><span></span></div>
+      ${rows || `<p class="hint">항목이 없습니다. 아래에서 추가해 주세요.</p>`}
+      <div class="cat-edit-actions">
+        <button type="button" id="add-category">항목 추가</button>
+        <button class="primary" type="button" id="save-rates">항목·금액 저장</button>
+      </div>`;
     updateCloudStatus();
+  }
+
+  function collectCategoriesFromForm(form) {
+    const rows = [...form.querySelectorAll(".cat-edit-row")];
+    const nextCats = [];
+    const nextRates = {};
+    for (const row of rows) {
+      const id = row.dataset.catId || uid();
+      const emoji = String(row.querySelector('[name="emoji"]')?.value || "⭐").trim() || "⭐";
+      const name = String(row.querySelector('[name="name"]')?.value || "").trim();
+      if (!name) {
+        toast("항목 이름을 모두 입력해 주세요.");
+        return null;
+      }
+      const rate = Number(row.querySelector('[name="rate"]')?.value || 0);
+      nextCats.push({ id, emoji, name });
+      nextRates[id] = Number.isFinite(rate) && rate >= 0 ? rate : 0;
+    }
+    if (!nextCats.length) {
+      toast("최소 1개 항목이 필요해요.");
+      return null;
+    }
+    return { categories: nextCats, rates: nextRates };
+  }
+
+  function saveCategoriesFromForm(form) {
+    const collected = collectCategoriesFromForm(form);
+    if (!collected) return;
+    state.categories = collected.categories;
+    state.rates = collected.rates;
+    save();
+    toast("도장 항목을 저장했습니다.");
+    render();
   }
 
   function render() {
@@ -1051,7 +1117,7 @@
         </label>
         <label>항목
           <select name="categoryId">
-            ${DEFAULT_CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === (presetCat || "tidy") ? "selected" : ""}>${c.emoji} ${c.name}</option>`).join("")}
+            ${state.categories.map((c) => `<option value="${c.id}" ${c.id === (presetCat || state.categories[0]?.id) ? "selected" : ""}>${c.emoji} ${c.name}</option>`).join("")}
           </select>
         </label>
         <label>메모 (기타일 때 유용) <input name="note" placeholder="예: 장보기 도와줌" /></label>
@@ -1251,13 +1317,59 @@
       }
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
-        const fd = new FormData(form);
-        DEFAULT_CATEGORIES.forEach((c) => {
-          state.rates[c.id] = Number(fd.get(c.id) || 0);
-        });
+        if (form) saveCategoriesFromForm(form);
+      }
+      if (e.target.id === "add-category") {
+        const form = document.getElementById("rates-form");
+        if (!form) return;
+        const rows = [...form.querySelectorAll(".cat-edit-row")];
+        state.categories = rows.map((row) => ({
+          id: row.dataset.catId || uid(),
+          emoji: String(row.querySelector('[name="emoji"]')?.value || "⭐").trim() || "⭐",
+          name: String(row.querySelector('[name="name"]')?.value || "").trim() || "새 항목",
+        }));
+        state.rates = Object.fromEntries(
+          rows.map((row, i) => {
+            const id = state.categories[i].id;
+            return [id, Number(row.querySelector('[name="rate"]')?.value || 0)];
+          })
+        );
+        const id = `cat_${uid().replace(/-/g, "").slice(0, 8)}`;
+        state.categories.push({ id, name: "새 항목", emoji: "⭐" });
+        state.rates[id] = 500;
+        renderSettings();
+        const lastName = document.querySelector("#rates-form .cat-edit-row:last-of-type .cat-name");
+        if (lastName) {
+          lastName.focus();
+          lastName.select();
+        }
+      }
+      const delCat = e.target.closest("[data-del-cat]");
+      if (delCat) {
+        const id = delCat.dataset.delCat;
+        const cat = categoryById(id);
+        const used = state.stamps.some((s) => s.categoryId === id);
+        const msg = used
+          ? `"${cat.name}" 항목을 삭제할까요? 이미 찍힌 도장은 남겨 두고, 목록에서만 빠집니다.`
+          : `"${cat.name}" 항목을 삭제할까요?`;
+        if (!window.confirm(msg)) return;
+        const form = document.getElementById("rates-form");
+        if (form) {
+          const draft = collectCategoriesFromForm(form);
+          if (draft) {
+            state.categories = draft.categories;
+            state.rates = draft.rates;
+          }
+        }
+        state.categories = state.categories.filter((c) => c.id !== id);
+        delete state.rates[id];
+        if (!state.categories.length) {
+          state.categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+          state.rates = { ...DEFAULT_RATES };
+        }
         save();
-        toast("금액을 저장했습니다.");
         render();
+        toast("항목을 삭제했습니다.");
       }
       if (e.target.id === "cancel-modal") {
         if (state.pinResolve) state.pinResolve(false);
@@ -1433,14 +1545,7 @@
         toast("비밀번호를 바꿨습니다.");
       }
       if (e.target.id === "rates-form") {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        DEFAULT_CATEGORIES.forEach((c) => {
-          state.rates[c.id] = Number(fd.get(c.id) || 0);
-        });
-        save();
-        toast("금액을 저장했습니다.");
-        render();
+        saveCategoriesFromForm(e.target);
       }
     }, true);
   }

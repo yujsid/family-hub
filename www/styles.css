@@ -639,11 +639,34 @@ button.primary {
   font-weight: 700;
   line-height: 1.45;
 }
-.stamp-board, .card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
+.cat-edit-form { gap: 12px; }
+.cat-edit-head {
+  display: none;
 }
+.cat-edit-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 96px 24px auto;
+  gap: 8px;
+  align-items: center;
+}
+.cat-edit-row .cat-emoji {
+  text-align: center;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.cat-edit-row .cat-rate { text-align: right; }
+.cat-won {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.cat-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.cat-edit-actions button { flex: 1 1 auto; }
 .card, .member-card {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -1024,6 +1047,18 @@ input[type="radio"] {
   .comment-form button {
     min-height: 44px;
   }
+  .cat-edit-row {
+    grid-template-columns: 52px 1fr;
+    grid-template-areas:
+      "emoji name"
+      "rate rate"
+      "del del";
+  }
+  .cat-edit-row .cat-emoji { grid-area: emoji; }
+  .cat-edit-row .cat-name { grid-area: name; }
+  .cat-edit-row .cat-rate { grid-area: rate; }
+  .cat-edit-row .cat-won { display: none; }
+  .cat-edit-row .danger { grid-area: del; }
   .talk-time { margin-left: 0; }
   #add-post-btn { min-height: 44px; }
   .modal-backdrop {
