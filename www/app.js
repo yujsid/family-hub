@@ -19,6 +19,7 @@
 
   const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
   const DEFAULT_DOC = "families/yu-family";
+  const PREFERRED_MEMBER_KEY = "family-hub-preferred-member";
 
   const state = {
     tab: "calendar",
@@ -240,6 +241,25 @@
 
   function memberById(id) {
     return MEMBERS.find((m) => m.id === id);
+  }
+
+  function getPreferredMemberId(pool = MEMBERS) {
+    try {
+      const saved = localStorage.getItem(PREFERRED_MEMBER_KEY);
+      if (saved && pool.some((m) => m.id === saved)) return saved;
+    } catch (_) {
+      /* ignore */
+    }
+    return pool[0]?.id || MEMBERS[0].id;
+  }
+
+  function setPreferredMemberId(id) {
+    if (!id || !MEMBERS.some((m) => m.id === id)) return;
+    try {
+      localStorage.setItem(PREFERRED_MEMBER_KEY, id);
+    } catch (_) {
+      /* ignore */
+    }
   }
 
   function categoryById(id) {
@@ -743,7 +763,7 @@
             <p class="talk-comments-label">댓글 ${comments.length}</p>
             ${commentHtml || `<p class="hint talk-empty-comments">아직 댓글이 없어요.</p>`}
             <form class="comment-form" data-post-id="${esc(post.id)}" action="#" method="post">
-              <select name="memberId" aria-label="작성자">${memberSelectOptions(author.id)}</select>
+              <select name="memberId" aria-label="작성자">${memberSelectOptions(getPreferredMemberId())}</select>
               <input name="body" required maxlength="500" placeholder="댓글을 입력하세요" />
               <button class="primary" type="submit">달기</button>
             </form>
@@ -758,7 +778,7 @@
       <h3>글 쓰기</h3>
       <form id="post-form" class="stack" action="#" method="post">
         <label>작성자
-          <select name="memberId">${memberSelectOptions("jaesang")}</select>
+          <select name="memberId">${memberSelectOptions(getPreferredMemberId())}</select>
         </label>
         <label>제목 (선택)
           <input name="title" maxlength="80" placeholder="예: 이번 주말 계획" />
@@ -779,9 +799,11 @@
     const body = String(fd.get("body") || "").trim();
     if (!body) return toast("내용을 입력해 주세요.");
     const title = String(fd.get("title") || "").trim();
+    const memberId = fd.get("memberId") || getPreferredMemberId();
+    setPreferredMemberId(memberId);
     state.posts.push({
       id: uid(),
-      memberId: fd.get("memberId") || "jaesang",
+      memberId,
       title,
       body,
       createdAt: new Date().toISOString(),
@@ -801,10 +823,12 @@
     const fd = new FormData(form);
     const body = String(fd.get("body") || "").trim();
     if (!body) return toast("댓글을 입력해 주세요.");
+    const memberId = fd.get("memberId") || getPreferredMemberId();
+    setPreferredMemberId(memberId);
     post.comments = Array.isArray(post.comments) ? post.comments : [];
     post.comments.push({
       id: uid(),
-      memberId: fd.get("memberId") || "jaesang",
+      memberId,
       body,
       createdAt: new Date().toISOString(),
     });
@@ -814,6 +838,7 @@
   }
 
   function renderSettings() {
+    const preferred = getPreferredMemberId();
     const rows = state.categories
       .map(
         (c) => `<div class="cat-edit-row" data-cat-id="${esc(c.id)}">
@@ -825,6 +850,14 @@
         </div>`
       )
       .join("");
+    $("#device-member-form").innerHTML = `
+      <label>기본 작성자
+        <select name="memberId" id="preferred-member">
+          ${memberSelectOptions(preferred)}
+        </select>
+      </label>
+      <p class="hint">이 휴대폰/컴퓨터에만 저장됩니다. 글·댓글·일정 추가 시 기본으로 선택돼요.</p>
+      <button class="primary" type="button" id="save-preferred-member">이 기기에 저장</button>`;
     $("#rates-form").innerHTML = `
       <div class="cat-edit-head"><span>이모지</span><span>항목 이름</span><span>금액</span><span></span></div>
       ${rows || `<p class="hint">항목이 없습니다. 아래에서 추가해 주세요.</p>`}
@@ -891,7 +924,7 @@
     const base = existing || {
       kind: kind || "schedule",
       title: "",
-      memberId: "sua",
+      memberId: getPreferredMemberId(),
       date: occDate,
       allDay: true,
       startTime: "16:00",
@@ -999,6 +1032,7 @@
     const occurrenceDate = fd.get("occurrenceDate") || fd.get("date");
     const fields = readEventFields(form);
     const existing = id ? state.events.find((x) => x.id === id) : null;
+    setPreferredMemberId(fields.memberId);
 
     if (existing && isRecurring(existing) && scope === "one") {
       existing.excludeDates = existing.excludeDates || [];
@@ -1055,7 +1089,7 @@
     toast("저장했습니다.");
   }
 
-  function deleteEventOccurrence(scope) {
+  async function deleteEventOccurrence(scope) {
     const form = document.getElementById("event-form");
     if (!form) return;
     const fd = new FormData(form);
@@ -1063,6 +1097,9 @@
     const occurrenceDate = fd.get("occurrenceDate") || fd.get("date");
     const existing = state.events.find((x) => x.id === id);
     if (!existing) return;
+
+    const ok = await askPin("삭제 확인");
+    if (!ok) return;
 
     if (scope === "one" && isRecurring(existing)) {
       existing.excludeDates = existing.excludeDates || [];
@@ -1095,6 +1132,7 @@
       categoryId: fd.get("categoryId"),
       note: String(fd.get("note") || ""),
     };
+    setPreferredMemberId(draft.memberId);
     const ok = await askPin();
     if (!ok) return;
     state.stamps.push(draft);
@@ -1106,13 +1144,14 @@
   }
 
   function stampForm(presetMember, presetCat) {
+    const defaultKid = getPreferredMemberId(ALLOWANCE_MEMBERS);
     openModal(`
       <h3>용돈 도장 찍기</h3>
       <form id="stamp-form" class="stack" action="#" method="post">
         <label>날짜 <input type="date" name="date" required value="${ymd(state.selected)}" /></label>
         <label>가족
           <select name="memberId">
-            ${ALLOWANCE_MEMBERS.map((m) => `<option value="${m.id}" ${m.id === (presetMember || "sua") ? "selected" : ""}>${m.name} (${m.role})</option>`).join("")}
+            ${ALLOWANCE_MEMBERS.map((m) => `<option value="${m.id}" ${m.id === (presetMember || defaultKid) ? "selected" : ""}>${m.name} (${m.role})</option>`).join("")}
           </select>
         </label>
         <label>항목
@@ -1315,6 +1354,12 @@
         if (form) form.reset();
         toast("비밀번호를 1234로 초기화했습니다.");
       }
+      if (e.target.id === "save-preferred-member") {
+        const sel = $("#preferred-member");
+        if (!sel) return;
+        setPreferredMemberId(sel.value);
+        toast(`${memberById(sel.value)?.name || "선택"}님으로 이 기기 기본값을 저장했어요.`);
+      }
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
         if (form) saveCategoriesFromForm(form);
@@ -1376,10 +1421,10 @@
         closeModal();
       }
       if (e.target.id === "delete-event" || e.target.id === "delete-event-all") {
-        deleteEventOccurrence("all");
+        await deleteEventOccurrence("all");
       }
       if (e.target.id === "delete-event-one") {
-        deleteEventOccurrence("one");
+        await deleteEventOccurrence("one");
       }
       const edit = e.target.closest("[data-edit-event]");
       if (edit) {
@@ -1388,8 +1433,7 @@
       }
       const delStamp = e.target.closest("[data-del-stamp]");
       if (delStamp) {
-        const ok = await askPin();
-        closeModal();
+        const ok = await askPin("삭제 확인");
         if (!ok) return;
         state.stamps = state.stamps.filter((s) => s.id !== delStamp.dataset.delStamp);
         save();
@@ -1398,6 +1442,8 @@
       }
       const delPost = e.target.closest("[data-del-post]");
       if (delPost) {
+        const ok = await askPin("삭제 확인");
+        if (!ok) return;
         state.posts = state.posts.filter((p) => p.id !== delPost.dataset.delPost);
         save();
         render();
@@ -1406,6 +1452,8 @@
       }
       const delComment = e.target.closest("[data-del-comment]");
       if (delComment) {
+        const ok = await askPin("삭제 확인");
+        if (!ok) return;
         const post = state.posts.find((p) => p.id === delComment.dataset.postId);
         if (post) {
           post.comments = (post.comments || []).filter((c) => c.id !== delComment.dataset.delComment);
