@@ -749,8 +749,21 @@ button.primary {
   padding: 12px 8px;
   text-align: center;
 }
-.stamp-btn strong { display: block; font-size: 18px; }
-.stamp-count { font-size: 22px; font-weight: 800; }
+.stamp-btn.is-todo-rate {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+  background: color-mix(in srgb, var(--green) 8%, #fff);
+  cursor: default;
+  pointer-events: none;
+}
+.todo-rate-box {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: #fff8ef;
+  margin-bottom: 4px;
+}
+.todo-rate-box .hint { margin: 8px 0 0; }
 
 .talk-heading {
   margin: 0;

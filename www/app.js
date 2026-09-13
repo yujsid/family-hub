@@ -36,6 +36,7 @@
     pin: "1234",
     categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
     rates: { ...DEFAULT_RATES },
+    todoRate: 500,
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -103,6 +104,7 @@
       pin: state.pin,
       categories: state.categories,
       rates: state.rates,
+      todoRate: state.todoRate,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
   }
@@ -131,6 +133,8 @@
     state.categories.forEach((c) => {
       if (state.rates[c.id] == null) state.rates[c.id] = 500;
     });
+    const todoRate = Number(data.todoRate);
+    state.todoRate = Number.isFinite(todoRate) && todoRate >= 0 ? todoRate : 500;
     render();
     state.applyingRemote = false;
   }
@@ -755,11 +759,28 @@
     });
   }
 
+  function completedTodosInMonth(memberId, year, month) {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let count = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = startOfDay(new Date(year, month, day));
+      state.events.forEach((ev) => {
+        if (ev.kind !== "todo" || !occursOn(ev, d)) return;
+        const occ = getOccurrence(ev, d);
+        if (occ.memberId !== memberId) return;
+        if (isTodoDone(ev, d)) count += 1;
+      });
+    }
+    return count;
+  }
+
   function renderStampBoard() {
     const d = state.cursor;
+    const year = d.getFullYear();
+    const month = d.getMonth();
     $("#stamp-month-title").textContent = monthLabel(d);
     $("#stamp-board").innerHTML = ALLOWANCE_MEMBERS.map((m) => {
-      const list = stampsInMonth(m.id, d.getFullYear(), d.getMonth());
+      const list = stampsInMonth(m.id, year, month);
       const cats = state.categories.map((c) => {
         const n = list.filter((s) => s.categoryId === c.id).length;
         const won = n * (state.rates[c.id] || 0);
@@ -769,11 +790,21 @@
           <small>${won.toLocaleString()}원</small>
         </button>`;
       }).join("");
-      const total = list.reduce((sum, s) => sum + (state.rates[s.categoryId] || 0), 0);
+      const todoCount = completedTodosInMonth(m.id, year, month);
+      const todoWon = todoCount * (state.todoRate || 0);
+      const stampTotal = list.reduce((sum, s) => sum + (state.rates[s.categoryId] || 0), 0);
+      const total = stampTotal + todoWon;
       return `<article class="member-card">
         <h3><span class="dot" style="background:${m.color}"></span> ${m.name} (${m.role})</h3>
         <p class="hint">이번 달 예상 용돈 <strong>${total.toLocaleString()}원</strong></p>
-        <div class="stamp-cats">${cats}</div>
+        <div class="stamp-cats">
+          ${cats}
+          <div class="stamp-btn is-todo-rate" title="완료한 할 일">
+            <span>☑ 할 일 완료</span>
+            <strong class="stamp-count">${todoCount}</strong>
+            <small>${todoWon.toLocaleString()}원</small>
+          </div>
+        </div>
       </article>`;
     }).join("");
   }
@@ -921,6 +952,12 @@
       <p class="hint">이 휴대폰/컴퓨터에만 저장됩니다. 글·댓글·일정 추가 시 기본으로 선택돼요.</p>
       <button class="primary" type="button" id="save-preferred-member">이 기기에 저장</button>`;
     $("#rates-form").innerHTML = `
+      <div class="todo-rate-box">
+        <label>할 일 1개 완료 시 용돈
+          <input type="number" id="todo-rate-input" name="todoRate" min="0" step="50" value="${state.todoRate || 0}" />
+        </label>
+        <p class="hint">유수아·유수민이 할 일을 완료하면 매달 개수 × 이 금액이 용돈에 더해집니다.</p>
+      </div>
       <div class="cat-edit-head"><span>이모지</span><span>항목 이름</span><span>금액</span><span></span></div>
       ${rows || `<p class="hint">항목이 없습니다. 아래에서 추가해 주세요.</p>`}
       <div class="cat-edit-actions">
@@ -928,6 +965,12 @@
         <button class="primary" type="button" id="save-rates">항목·금액 저장</button>
       </div>`;
     updateCloudStatus();
+  }
+
+  function readTodoRateFromForm(form) {
+    const raw = form?.querySelector('[name="todoRate"]')?.value;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : state.todoRate || 0;
   }
 
   function collectCategoriesFromForm(form) {
@@ -950,7 +993,7 @@
       toast("최소 1개 항목이 필요해요.");
       return null;
     }
-    return { categories: nextCats, rates: nextRates };
+    return { categories: nextCats, rates: nextRates, todoRate: readTodoRateFromForm(form) };
   }
 
   function saveCategoriesFromForm(form) {
@@ -958,6 +1001,7 @@
     if (!collected) return;
     state.categories = collected.categories;
     state.rates = collected.rates;
+    state.todoRate = collected.todoRate;
     save();
     toast("도장 항목을 저장했습니다.");
     render();
@@ -1458,6 +1502,7 @@
             return [id, Number(row.querySelector('[name="rate"]')?.value || 0)];
           })
         );
+        state.todoRate = readTodoRateFromForm(form);
         const id = `cat_${uid().replace(/-/g, "").slice(0, 8)}`;
         state.categories.push({ id, name: "새 항목", emoji: "⭐" });
         state.rates[id] = 500;
