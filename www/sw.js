@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v12";
+const CACHE = "family-hub-v13";
 const ASSETS = [
   "./",
   "./index.html",
@@ -25,7 +25,14 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
-  if (url.hostname.includes("googleapis.com") || url.hostname.includes("gstatic.com") || url.hostname.includes("firebaseio.com") || url.hostname.includes("firestore.googleapis.com")) {
+  if (
+    url.hostname.includes("googleapis.com") ||
+    url.hostname.includes("gstatic.com") ||
+    url.hostname.includes("firebaseio.com") ||
+    url.hostname.includes("firestore.googleapis.com") ||
+    url.hostname.includes("apis.data.go.kr") ||
+    url.hostname.includes("open-meteo.com")
+  ) {
     return;
   }
 

@@ -9,5 +9,12 @@ window.FAMILY_HUB_FIREBASE = {
   measurementId: "G-07ZVHTF5RE",
 };
 
+// 날씨 (기상청 단기예보). serviceKey는 공공데이터포털에서 발급해 넣으세요.
+// https://www.data.go.kr/data/15084084/openapi.do
+window.FAMILY_HUB_WEATHER = {
+  serviceKey: "", // 예: Decoding 인증키
+  regionId: "seoul",
+};
+
 // 가족 데이터 문서 경로 (같은 값을 쓰는 기기끼리 데이터를 공유합니다)
 window.FAMILY_HUB_DOC = "families/yu-family";

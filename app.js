@@ -20,6 +20,19 @@
   const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
   const DEFAULT_DOC = "families/yu-family";
   const PREFERRED_MEMBER_KEY = "family-hub-preferred-member";
+  const WEATHER_REGION_KEY = "family-hub-weather-region";
+  const WEATHER_KEY_STORAGE = "family-hub-weather-service-key";
+  const WEATHER_CACHE_KEY = "family-hub-weather-cache";
+  const WEATHER_REGIONS = [
+    { id: "seoul", label: "서울", nx: 60, ny: 127, lat: 37.5665, lon: 126.978 },
+    { id: "suwon", label: "수원", nx: 60, ny: 121, lat: 37.2636, lon: 127.0286 },
+    { id: "incheon", label: "인천", nx: 55, ny: 124, lat: 37.4563, lon: 126.7052 },
+    { id: "bundang", label: "분당", nx: 62, ny: 123, lat: 37.3827, lon: 127.1189 },
+    { id: "busan", label: "부산", nx: 98, ny: 76, lat: 35.1796, lon: 129.0756 },
+    { id: "daejeon", label: "대전", nx: 67, ny: 100, lat: 36.3504, lon: 127.3845 },
+    { id: "daegu", label: "대구", nx: 89, ny: 90, lat: 35.8714, lon: 128.6014 },
+    { id: "gwangju", label: "광주", nx: 58, ny: 74, lat: 35.1595, lon: 126.8526 },
+  ];
 
   const state = {
     tab: "calendar",
@@ -37,6 +50,9 @@
     categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
     rates: { ...DEFAULT_RATES },
     todoRate: 500,
+    weatherByDate: {},
+    weatherMeta: { source: "", label: "", error: "" },
+    weatherLoading: false,
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -485,7 +501,10 @@
         .join("");
       cells.push(`
         <div class="day-cell ${muted} ${today} ${selected}" data-date="${ymd(day)}">
-          <div class="day-num">${day.getDate()}</div>
+          <div class="day-num-row">
+            <div class="day-num">${day.getDate()}</div>
+            ${weatherChipHtml(ymd(day))}
+          </div>
           <div class="day-dots">${dots}${stampDots}</div>
           <div class="pills">${visible}${stampPills(day)}${extra}</div>
         </div>`);
@@ -506,7 +525,11 @@
 
     const heads = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(start, i);
-      return `<div class="week-head ${sameDay(d, new Date()) ? "is-today" : ""}">${WEEKDAYS[d.getDay()]} ${d.getDate()}</div>`;
+      const key = ymd(d);
+      return `<div class="week-head ${sameDay(d, new Date()) ? "is-today" : ""}" data-date="${key}">
+        <div>${WEEKDAYS[d.getDay()]} ${d.getDate()}</div>
+        ${weatherChipHtml(key)}
+      </div>`;
     }).join("");
 
     const allDayRow = Array.from({ length: 7 }, (_, i) => {
@@ -581,8 +604,10 @@
     const d = state.cursor;
     const items = eventsOn(d);
     const stamps = stampsOn(d);
+    const w = state.weatherByDate[ymd(d)];
+    const weatherLine = w ? `<p class="day-weather-line">${esc(w.text)}</p>` : "";
     if (!items.length && !stamps.length) {
-      return `<div class="day-list">${emptyState("이 날 등록된 일정·할 일·도장이 없습니다.")}</div>`;
+      return `${weatherLine}<div class="day-list">${emptyState("이 날 등록된 일정·할 일·도장이 없습니다.")}</div>`;
     }
     const rows = items
       .map((ev) => {
@@ -620,7 +645,7 @@
         </div>`
       )
       .join("");
-    return `<div class="day-list">${rows}${stampRows}</div>`;
+    return `${weatherLine}<div class="day-list">${rows}${stampRows}</div>`;
   }
 
   function dayItemsHtml(d) {
@@ -666,9 +691,14 @@
   function openDayDetailModal(date) {
     const d = startOfDay(date);
     state.selected = d;
+    const w = state.weatherByDate[ymd(d)];
+    const weatherLine = w
+      ? `<p class="day-weather-line">${esc(w.text)}${state.weatherMeta.source ? ` · ${esc(state.weatherMeta.source)}` : ""}</p>`
+      : "";
     openModal(`
       <div class="day-modal">
         <h3>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})</h3>
+        ${weatherLine}
         <div class="panel-actions">
           <button type="button" id="panel-add-event">일정</button>
           <button type="button" id="panel-add-todo">할 일</button>
@@ -741,15 +771,288 @@
       : emptyState("이달에 할 일이 없어요. 위에서 추가해 보세요.");
   }
 
+  function weatherIcon(sky, pty) {
+    const p = Number(pty) || 0;
+    const s = Number(sky) || 1;
+    if (p === 1 || p === 4) return "🌧️";
+    if (p === 2) return "🌨️";
+    if (p === 3) return "❄️";
+    if (s === 1) return "☀️";
+    if (s === 3) return "⛅";
+    if (s === 4) return "☁️";
+    return "🌡️";
+  }
+
+  function weatherIconFromWmo(code) {
+    const c = Number(code) || 0;
+    if (c === 0) return "☀️";
+    if (c <= 3) return "⛅";
+    if (c <= 48) return "🌫️";
+    if (c <= 57) return "🌦️";
+    if (c <= 67) return "🌧️";
+    if (c <= 77) return "❄️";
+    if (c <= 82) return "🌧️";
+    if (c <= 86) return "🌨️";
+    if (c >= 95) return "⛈️";
+    return "🌡️";
+  }
+
+  function getWeatherRegion() {
+    let id = "";
+    try {
+      id = localStorage.getItem(WEATHER_REGION_KEY) || "";
+    } catch (_) {
+      /* ignore */
+    }
+    if (!id) id = window.FAMILY_HUB_WEATHER?.regionId || "seoul";
+    return WEATHER_REGIONS.find((r) => r.id === id) || WEATHER_REGIONS[0];
+  }
+
+  function getWeatherServiceKey() {
+    try {
+      const saved = localStorage.getItem(WEATHER_KEY_STORAGE);
+      if (saved) return saved.trim();
+    } catch (_) {
+      /* ignore */
+    }
+    return String(window.FAMILY_HUB_WEATHER?.serviceKey || "").trim();
+  }
+
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function ymdCompact(d) {
+    return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+  }
+
+  function compactToYmd(s) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  }
+
+  function getVilageBaseDateTime() {
+    const now = new Date();
+    const times = [2, 5, 8, 11, 14, 17, 20, 23];
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    let base = null;
+    for (let i = times.length - 1; i >= 0; i--) {
+      const t = times[i];
+      if (hour > t || (hour === t && minute >= 10)) {
+        base = t;
+        break;
+      }
+    }
+    if (base == null) {
+      const prev = addDays(now, -1);
+      return { base_date: ymdCompact(prev), base_time: "2300" };
+    }
+    return { base_date: ymdCompact(now), base_time: `${pad2(base)}00` };
+  }
+
+  function weatherChipHtml(dateKey) {
+    const w = state.weatherByDate[dateKey];
+    if (!w) return "";
+    const tmp = w.tmp != null ? `${w.tmp}°` : "";
+    return `<span class="day-weather" title="${esc(w.text || "")}">${w.icon}${tmp ? ` ${tmp}` : ""}</span>`;
+  }
+
+  function summarizeKmaItems(items) {
+    const byDate = {};
+    items.forEach((item) => {
+      const key = compactToYmd(item.fcstDate);
+      if (!byDate[key]) byDate[key] = { tmps: [], sky: null, pty: 0, pop: 0, noonSky: null, noonPty: null };
+      const bucket = byDate[key];
+      if (item.category === "TMP") bucket.tmps.push(Number(item.fcstValue));
+      if (item.category === "SKY") {
+        bucket.sky = Number(item.fcstValue);
+        if (item.fcstTime === "1200") bucket.noonSky = Number(item.fcstValue);
+      }
+      if (item.category === "PTY") {
+        const p = Number(item.fcstValue) || 0;
+        bucket.pty = Math.max(bucket.pty, p);
+        if (item.fcstTime === "1200") bucket.noonPty = p;
+      }
+      if (item.category === "POP") bucket.pop = Math.max(bucket.pop, Number(item.fcstValue) || 0);
+    });
+    const out = {};
+    Object.keys(byDate).forEach((key) => {
+      const b = byDate[key];
+      const sky = b.noonSky != null ? b.noonSky : b.sky;
+      const pty = b.noonPty != null ? b.noonPty : b.pty;
+      const tmp = b.tmps.length ? Math.round(b.tmps.reduce((a, c) => a + c, 0) / b.tmps.length) : null;
+      const max = b.tmps.length ? Math.round(Math.max(...b.tmps)) : tmp;
+      const icon = weatherIcon(sky, pty);
+      out[key] = {
+        icon,
+        tmp: max,
+        pop: b.pop,
+        text: `${icon} ${max != null ? max + "°" : ""}${b.pop ? ` · 강수확률 ${b.pop}%` : ""}`.trim(),
+      };
+    });
+    return out;
+  }
+
+  async function fetchKmaWeather(region) {
+    const serviceKey = getWeatherServiceKey();
+    if (!serviceKey || serviceKey.startsWith("PASTE")) {
+      throw new Error("기상청 API 키가 없습니다.");
+    }
+    const { base_date, base_time } = getVilageBaseDateTime();
+    const params = new URLSearchParams({
+      serviceKey,
+      pageNo: "1",
+      numOfRows: "1000",
+      dataType: "JSON",
+      base_date,
+      base_time,
+      nx: String(region.nx),
+      ny: String(region.ny),
+    });
+    // serviceKey는 이미 인코딩된 키일 수 있어 URLSearchParams 재인코딩을 피함
+    const qs = [...params.entries()]
+      .map(([k, v]) => `${encodeURIComponent(k)}=${k === "serviceKey" ? v : encodeURIComponent(v)}`)
+      .join("&");
+    const url = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?${qs}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`기상청 응답 오류 (${res.status})`);
+    const json = await res.json();
+    const header = json?.response?.header;
+    if (header && header.resultCode !== "00") {
+      throw new Error(header.resultMsg || "기상청 조회 실패");
+    }
+    const items = json?.response?.body?.items?.item || [];
+    if (!items.length) throw new Error("기상청 예보 데이터가 비어 있습니다.");
+    return { byDate: summarizeKmaItems(items), source: "기상청 단기예보" };
+  }
+
+  async function fetchOpenMeteoWeather(region) {
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${region.lat}&longitude=${region.lon}` +
+      `&daily=weather_code,temperature_2m_max,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=7`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`날씨 응답 오류 (${res.status})`);
+    const json = await res.json();
+    const days = json?.daily?.time || [];
+    const codes = json?.daily?.weather_code || [];
+    const maxs = json?.daily?.temperature_2m_max || [];
+    const pops = json?.daily?.precipitation_probability_max || [];
+    const byDate = {};
+    days.forEach((date, i) => {
+      const icon = weatherIconFromWmo(codes[i]);
+      const tmp = maxs[i] != null ? Math.round(maxs[i]) : null;
+      const pop = pops[i] != null ? Math.round(pops[i]) : 0;
+      byDate[date] = {
+        icon,
+        tmp,
+        pop,
+        text: `${icon} ${tmp != null ? tmp + "°" : ""}${pop ? ` · 강수확률 ${pop}%` : ""}`.trim(),
+      };
+    });
+    return { byDate, source: "Open-Meteo 예보" };
+  }
+
+  function loadWeatherCache(regionId) {
+    try {
+      const raw = localStorage.getItem(WEATHER_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.regionId !== regionId) return null;
+      if (Date.now() - parsed.savedAt > 45 * 60 * 1000) return null;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveWeatherCache(regionId, payload) {
+    try {
+      localStorage.setItem(
+        WEATHER_CACHE_KEY,
+        JSON.stringify({
+          regionId,
+          savedAt: Date.now(),
+          byDate: payload.byDate,
+          source: payload.source,
+          label: payload.label,
+        })
+      );
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  async function ensureWeather(force = false) {
+    const region = getWeatherRegion();
+    if (!force) {
+      const cached = loadWeatherCache(region.id);
+      if (cached) {
+        state.weatherByDate = cached.byDate || {};
+        state.weatherMeta = { source: cached.source || "", label: region.label, error: "" };
+        return;
+      }
+      if (state.weatherLoading) return;
+      if (Object.keys(state.weatherByDate).length && state.weatherMeta.label === region.label) return;
+    }
+    state.weatherLoading = true;
+    try {
+      let result;
+      let error = "";
+      try {
+        result = await fetchKmaWeather(region);
+      } catch (kmaErr) {
+        error = kmaErr.message || String(kmaErr);
+        result = await fetchOpenMeteoWeather(region);
+      }
+      state.weatherByDate = result.byDate;
+      state.weatherMeta = {
+        source: result.source,
+        label: region.label,
+        error: result.source.startsWith("기상청") ? "" : error ? `기상청 대신 대체 예보 사용 (${error})` : "",
+      };
+      saveWeatherCache(region.id, {
+        byDate: state.weatherByDate,
+        source: state.weatherMeta.source,
+        label: region.label,
+      });
+    } catch (err) {
+      state.weatherMeta = {
+        source: "",
+        label: region.label,
+        error: err.message || String(err),
+      };
+    } finally {
+      state.weatherLoading = false;
+      if (state.tab === "calendar") renderCalendar();
+    }
+  }
+
+  function weatherBannerHtml() {
+    const region = getWeatherRegion();
+    const meta = state.weatherMeta;
+    if (state.weatherLoading && !Object.keys(state.weatherByDate).length) {
+      return `<p class="weather-banner hint">날씨를 불러오는 중… (${esc(region.label)})</p>`;
+    }
+    if (meta.error && !Object.keys(state.weatherByDate).length) {
+      return `<p class="weather-banner hint">날씨를 불러오지 못했어요. 설정에서 API 키·지역을 확인해 주세요.</p>`;
+    }
+    if (!Object.keys(state.weatherByDate).length) return "";
+    const note = meta.source ? `${esc(region.label)} · ${esc(meta.source)}` : esc(region.label);
+    return `<p class="weather-banner hint">${note}${meta.error && meta.source ? " · 대체 예보" : ""}</p>`;
+  }
+
   function renderCalendar() {
     $("#period-title").textContent = periodTitle();
     document.querySelectorAll("[data-cal-view]").forEach((btn) => {
       btn.classList.toggle("is-active", btn.dataset.calView === state.calView);
     });
     const root = $("#calendar-root");
-    if (state.calView === "month") root.innerHTML = renderMonth();
-    if (state.calView === "week") root.innerHTML = renderWeek();
-    if (state.calView === "day") root.innerHTML = renderDay();
+    let body = "";
+    if (state.calView === "month") body = renderMonth();
+    if (state.calView === "week") body = renderWeek();
+    if (state.calView === "day") body = renderDay();
+    root.innerHTML = `${weatherBannerHtml()}${body}`;
+    ensureWeather();
   }
 
   function stampsInMonth(memberId, year, month) {
@@ -951,6 +1254,21 @@
       </label>
       <p class="hint">이 휴대폰/컴퓨터에만 저장됩니다. 글·댓글·일정 추가 시 기본으로 선택돼요.</p>
       <button class="primary" type="button" id="save-preferred-member">이 기기에 저장</button>`;
+    const region = getWeatherRegion();
+    const keyVal = getWeatherServiceKey();
+    $("#weather-form").innerHTML = `
+      <label>지역
+        <select id="weather-region">
+          ${WEATHER_REGIONS.map((r) => `<option value="${r.id}" ${r.id === region.id ? "selected" : ""}>${r.label}</option>`).join("")}
+        </select>
+      </label>
+      <label>기상청 API 키 (선택)
+        <input id="weather-service-key" type="password" autocomplete="off" placeholder="공공데이터포털 Decoding 키" value="${esc(keyVal)}" />
+      </label>
+      <p class="hint">키가 있으면 기상청 단기예보를 쓰고, 없거나 실패하면 대체 예보를 표시합니다. <a href="https://www.data.go.kr/data/15084084/openapi.do" target="_blank" rel="noopener">키 발급 안내</a></p>
+      <p class="hint">${state.weatherMeta.source ? `현재: ${esc(state.weatherMeta.source)}` : "아직 날씨를 불러오지 않았어요."}</p>
+      <button class="primary" type="button" id="save-weather">날씨 설정 저장</button>
+      <button type="button" id="refresh-weather">지금 새로고침</button>`;
     $("#rates-form").innerHTML = `
       <div class="todo-rate-box">
         <label>할 일 1개 완료 시 용돈
@@ -1483,6 +1801,30 @@
         setPreferredMemberId(sel.value);
         toast(`${memberById(sel.value)?.name || "선택"}님으로 이 기기 기본값을 저장했어요.`);
       }
+      if (e.target.id === "save-weather") {
+        const regionSel = $("#weather-region");
+        const keyInput = $("#weather-service-key");
+        if (regionSel) {
+          try {
+            localStorage.setItem(WEATHER_REGION_KEY, regionSel.value);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        if (keyInput) {
+          try {
+            localStorage.setItem(WEATHER_KEY_STORAGE, keyInput.value.trim());
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        toast("날씨 설정을 저장했어요.");
+        ensureWeather(true);
+      }
+      if (e.target.id === "refresh-weather") {
+        ensureWeather(true);
+        toast("날씨를 다시 불러오는 중이에요.");
+      }
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
         if (form) saveCategoriesFromForm(form);
@@ -1725,6 +2067,7 @@
 
   initCloud().then(() => {
     bind();
+    ensureWeather();
     render();
     updateCloudStatus();
   });

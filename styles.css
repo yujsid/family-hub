@@ -218,7 +218,35 @@ button.primary {
 .day-cell.is-today { outline: 2px solid var(--coral); outline-offset: -2px; }
 .day-cell.is-selected { background: #fff1e8; }
 .day-cell.muted { color: #b3aaa0; }
-.day-num { font-weight: 700; margin-bottom: 6px; }
+.day-num-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.day-num { font-weight: 700; margin-bottom: 0; }
+.day-weather {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.weather-banner {
+  margin: 0 0 10px;
+}
+.day-weather-line {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.week-head .day-weather {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
 .pills {
   display: flex;
   flex-direction: column;
