@@ -1131,9 +1131,6 @@ input[type="radio"] {
 .poke-message--wrong {
   animation: pokeMessageShake 0.4s ease;
 }
-.poke-countdown.is-warn {
-  animation: pokeCountdownPulse 0.55s ease-in-out infinite;
-}
 .poke-choice.is-correct {
   animation: pokeChoiceCorrect 0.45s ease;
 }
@@ -1288,6 +1285,7 @@ input[type="radio"] {
 }
 .poke-countdown.is-warn {
   color: #c0392b;
+  animation: pokeCountdownPulse 0.55s ease-in-out infinite;
 }
 .poke-wrong-streak.is-warn {
   color: #c62828;
