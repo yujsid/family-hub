@@ -23,8 +23,16 @@
   const WEATHER_REGION_KEY = "family-hub-weather-region";
   const WEATHER_KEY_STORAGE = "family-hub-weather-service-key";
   const WEATHER_CACHE_KEY = "family-hub-weather-cache";
-  const POKE_SCORE_KEY = "family-hub-poke-score";
-  const POKE_STREAK_KEY = "family-hub-poke-streak";
+  const POKE_RANK_KEY = "family-hub-poke-rank";
+  const POKE_ROUNDS_MAX = 10;
+  const POKE_MAX_WRONG_STREAK = 2;
+  const POKE_PLAYER_OPTIONS = [
+    { id: "jaesang", name: "유재상" },
+    { id: "sinjeong", name: "윤신정" },
+    { id: "sua", name: "유수아" },
+    { id: "sumin", name: "유수민" },
+    { id: "other", name: "기타" },
+  ];
   const POKE_MAX_ID = 151; // 1세대
   const WEATHER_REGIONS = [
     { id: "seoul", label: "서울", nx: 60, ny: 127, lat: 37.5665, lon: 126.978 },
@@ -71,8 +79,16 @@
     },
     pokeNamePool: [],
     pokeNamePoolLoading: false,
-    pokeScore: 0,
-    pokeStreak: 0,
+    pokeSession: {
+      phase: "setup",
+      playerId: "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongStreak: 0,
+      endReason: "",
+    },
+    pokeRank: [],
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -1429,45 +1445,123 @@
     return shuffleArray([correct, ...wrong.slice(0, 3)]);
   }
 
-  function loadPokeScores() {
+  function loadPokeRank() {
     try {
-      state.pokeScore = Number(localStorage.getItem(POKE_SCORE_KEY)) || 0;
-      state.pokeStreak = Number(localStorage.getItem(POKE_STREAK_KEY)) || 0;
+      const raw = localStorage.getItem(POKE_RANK_KEY);
+      state.pokeRank = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(state.pokeRank)) state.pokeRank = [];
     } catch (_) {
-      state.pokeScore = 0;
-      state.pokeStreak = 0;
+      state.pokeRank = [];
     }
   }
 
-  function savePokeScores() {
+  function savePokeRank() {
     try {
-      localStorage.setItem(POKE_SCORE_KEY, String(state.pokeScore));
-      localStorage.setItem(POKE_STREAK_KEY, String(state.pokeStreak));
+      localStorage.setItem(POKE_RANK_KEY, JSON.stringify(state.pokeRank));
     } catch (_) {
       /* ignore */
     }
   }
 
+  function addPokeRankEntry(entry) {
+    state.pokeRank.push(entry);
+    if (state.pokeRank.length > 100) state.pokeRank = state.pokeRank.slice(-100);
+    savePokeRank();
+  }
+
+  function getPokeRankBoard() {
+    const best = {};
+    state.pokeRank.forEach((e) => {
+      const prev = best[e.name];
+      if (!prev || e.score > prev.score || (e.score === prev.score && e.at > prev.at)) {
+        best[e.name] = e;
+      }
+    });
+    return Object.values(best).sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name), "ko"));
+  }
+
+  function renderPokeSetupHtml() {
+    const s = state.pokeSession;
+    const opts = POKE_PLAYER_OPTIONS.map(
+      (p) =>
+        `<label class="check-row poke-player-opt">
+          <input type="radio" name="playerId" value="${p.id}" ${p.id === s.playerId ? "checked" : ""} />
+          <span>${esc(p.name)}</span>
+        </label>`
+    ).join("");
+    return `
+      <div class="poke-card poke-setup">
+        <h3 class="poke-setup-title">참가자 선택</h3>
+        <form id="poke-setup-form" class="stack" action="#" method="post">
+          <div class="poke-player-list">${opts}</div>
+          <label id="poke-other-wrap" class="poke-other-wrap" style="${s.playerId === "other" ? "" : "display:none"}">
+            이름
+            <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
+          </label>
+          <p class="hint">한 게임 <strong>${POKE_ROUNDS_MAX}문제</strong> · 연속 <strong>${POKE_MAX_WRONG_STREAK}회</strong> 오답 시 종료</p>
+          <button class="primary" type="button" id="poke-start-session">게임 시작</button>
+        </form>
+      </div>`;
+  }
+
+  function renderPokeRankHtml() {
+    const s = state.pokeSession;
+    const board = getPokeRankBoard();
+    const list = board.length
+      ? board
+          .map(
+            (e, i) => `<li class="poke-rank-row">
+              <span class="poke-rank-num">${i + 1}</span>
+              <span class="poke-rank-name">${esc(e.name)}</span>
+              <span class="poke-rank-score">${e.score} / ${POKE_ROUNDS_MAX}</span>
+            </li>`
+          )
+          .join("")
+      : `<li class="poke-rank-empty">아직 기록이 없어요.</li>`;
+    const endMsg =
+      s.endReason === "fail"
+        ? `연속 ${POKE_MAX_WRONG_STREAK}회 오답으로 게임이 끝났어요.`
+        : `${POKE_ROUNDS_MAX}문제를 모두 풀었어요!`;
+    return `
+      <div class="poke-card poke-rank-card">
+        <h3 class="poke-setup-title">게임 종료</h3>
+        <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score} / ${POKE_ROUNDS_MAX}점</p>
+        <p class="hint">${endMsg}</p>
+        <h4 class="poke-rank-heading">Rank</h4>
+        <ol class="poke-rank-list">${list}</ol>
+        <div class="poke-actions">
+          <button class="primary" type="button" id="poke-play-again">다시 하기</button>
+        </div>
+      </div>`;
+  }
+
   function renderPokeGame() {
     const root = $("#poke-game-root");
     if (!root) return;
+    const s = state.pokeSession;
+    if (s.phase === "setup") {
+      root.innerHTML = renderPokeSetupHtml();
+      return;
+    }
+    if (s.phase === "ended") {
+      root.innerHTML = renderPokeRankHtml();
+      return;
+    }
     const g = state.pokeGame;
     if (g.loading) {
-      root.innerHTML = `<div class="poke-card"><p class="hint">포켓몬을 불러오는 중…${state.pokeNamePool.length ? "" : " (이름 목록 준비 중)"}</p></div>`;
+      root.innerHTML = `<div class="poke-card"><p class="hint">포켓몬을 불러오는 중… (${esc(s.playerName)} · ${s.round + 1}/${POKE_ROUNDS_MAX})</p></div>`;
       return;
     }
     if (g.error) {
       root.innerHTML = `<div class="poke-card">
         <p class="hint">${esc(g.error)}</p>
         <button class="primary" type="button" id="poke-retry-btn">다시 불러오기</button>
+        <button type="button" id="poke-back-setup">참가자 선택</button>
       </div>`;
       return;
     }
     if (!g.id) {
-      root.innerHTML = `<div class="poke-card">
-        <p class="hint">시작 버튼을 눌러 게임을 시작하세요.</p>
-        <button class="primary" type="button" id="poke-start-btn">게임 시작</button>
-      </div>`;
+      root.innerHTML = `<div class="poke-card"><p class="hint">문제를 준비하는 중…</p></div>`;
       return;
     }
     const revealedClass = g.revealed ? "is-revealed" : "is-silhouette";
@@ -1482,11 +1576,25 @@
         return `<button type="button" class="${cls}" data-poke-choice="${c.id}" ${g.answered ? "disabled" : ""}>${esc(c.nameKo)}</button>`;
       })
       .join("");
+    const sessionEnded =
+      g.answered &&
+      (s.wrongStreak >= POKE_MAX_WRONG_STREAK || s.round >= POKE_ROUNDS_MAX);
+    let actionHtml = "";
+    if (g.answered) {
+      if (sessionEnded) {
+        actionHtml = `<button class="primary" type="button" id="poke-show-rank">순위 보기</button>`;
+      } else {
+        actionHtml = `<button class="primary" type="button" id="poke-next-round">다음 문제 (${s.round + 1}/${POKE_ROUNDS_MAX})</button>`;
+      }
+    } else {
+      actionHtml = `<div class="poke-choices">${choiceHtml}</div>`;
+    }
     root.innerHTML = `
       <div class="poke-scorebar">
-        <span>점수 <strong>${state.pokeScore}</strong></span>
-        <span>연속 <strong>${state.pokeStreak}</strong></span>
-        <span>No.${g.id}</span>
+        <span>참가 <strong>${esc(s.playerName)}</strong></span>
+        <span>문제 <strong>${s.round + 1}</strong> / ${POKE_ROUNDS_MAX}</span>
+        <span>점수 <strong>${s.score}</strong></span>
+        <span class="poke-wrong-streak${s.wrongStreak ? " is-warn" : ""}">연속 오답 ${s.wrongStreak}/${POKE_MAX_WRONG_STREAK}</span>
       </div>
       <div class="poke-card">
         <div class="poke-stage">
@@ -1494,18 +1602,71 @@
         </div>
         <p class="poke-prompt">${g.revealed ? `정답은 <strong>${esc(g.nameKo)}</strong>!` : "보기에서 이름을 골라 주세요"}</p>
         ${g.message ? `<p class="poke-message">${esc(g.message)}</p>` : ""}
-        ${
-          g.revealed
-            ? `<div class="poke-actions">
-                <button class="primary" type="button" id="poke-next-round">다음 포켓몬</button>
-              </div>`
-            : `<div class="poke-choices">${choiceHtml}</div>`
-        }
+        ${actionHtml}
       </div>`;
+  }
+
+  function resetPokeToSetup() {
+    state.pokeSession = {
+      phase: "setup",
+      playerId: state.pokeSession.playerId || "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongStreak: 0,
+      endReason: "",
+    };
+    state.pokeGame.id = null;
+    state.pokeGame.error = "";
+    renderPokeGame();
+  }
+
+  function startPokeSession(playerId, customName) {
+    const opt = POKE_PLAYER_OPTIONS.find((p) => p.id === playerId) || POKE_PLAYER_OPTIONS[0];
+    let playerName = opt.name;
+    if (playerId === "other") {
+      playerName = String(customName || "").trim();
+      if (!playerName) return toast("기타를 선택했으면 이름을 입력해 주세요.");
+    }
+    state.pokeSession = {
+      phase: "playing",
+      playerId,
+      playerName,
+      round: 0,
+      score: 0,
+      wrongStreak: 0,
+      endReason: "",
+    };
+    loadRandomPokemon();
+  }
+
+  function endPokeSession() {
+    const s = state.pokeSession;
+    if (s.phase !== "playing") return;
+    if (!s.endReason) {
+      s.endReason = s.wrongStreak >= POKE_MAX_WRONG_STREAK ? "fail" : "complete";
+    }
+    addPokeRankEntry({
+      name: s.playerName,
+      score: s.score,
+      total: POKE_ROUNDS_MAX,
+      rounds: s.round,
+      reason: s.endReason,
+      at: new Date().toISOString(),
+    });
+    s.phase = "ended";
+    state.pokeGame.id = null;
+    renderPokeGame();
   }
 
   async function loadRandomPokemon() {
     const g = state.pokeGame;
+    const s = state.pokeSession;
+    if (s.phase !== "playing") return;
+    if (s.round >= POKE_ROUNDS_MAX) {
+      endPokeSession();
+      return;
+    }
     g.loading = true;
     g.error = "";
     g.message = "";
@@ -1552,24 +1713,43 @@
 
   function pickPokeChoice(choiceId) {
     const g = state.pokeGame;
-    if (!g.id || g.answered) return;
+    const s = state.pokeSession;
+    if (s.phase !== "playing" || !g.id || g.answered) return;
     const id = Number(choiceId);
     g.answered = true;
     g.pickedId = id;
     g.revealed = true;
+    s.round += 1;
     if (id === g.id) {
+      s.score += 1;
+      s.wrongStreak = 0;
       g.message = "정답이에요!";
-      state.pokeScore += 1;
-      state.pokeStreak += 1;
       toast(`정답! ${g.nameKo}`);
     } else {
+      s.wrongStreak += 1;
       const picked = g.choices.find((c) => c.id === id);
       g.message = picked ? `"${picked.nameKo}"(은)는 틀렸어요.` : "틀렸어요.";
-      state.pokeStreak = 0;
+      if (s.wrongStreak >= POKE_MAX_WRONG_STREAK) {
+        g.message += ` 연속 ${POKE_MAX_WRONG_STREAK}회 오답!`;
+        s.endReason = "fail";
+      }
       toast(`정답은 ${g.nameKo}입니다.`);
     }
-    savePokeScores();
+    if (s.round >= POKE_ROUNDS_MAX && s.wrongStreak < POKE_MAX_WRONG_STREAK) {
+      s.endReason = "complete";
+    }
     renderPokeGame();
+  }
+
+  function pokeNextRound() {
+    const s = state.pokeSession;
+    const g = state.pokeGame;
+    if (s.phase !== "playing" || !g.answered) return;
+    if (s.wrongStreak >= POKE_MAX_WRONG_STREAK || s.round >= POKE_ROUNDS_MAX) {
+      endPokeSession();
+      return;
+    }
+    loadRandomPokemon();
   }
 
   function render() {
@@ -1582,12 +1762,9 @@
     if (state.tab === "stamps") renderStampBoard();
     if (state.tab === "talk") renderTalk();
     if (state.tab === "game") {
-      loadPokeScores();
+      loadPokeRank();
       renderPokeGame();
       ensurePokeNamePool();
-      if (!state.pokeGame.id && !state.pokeGame.loading && !state.pokeGame.error) {
-        loadRandomPokemon();
-      }
     }
     if (state.tab === "settings") renderSettings();
   }
@@ -1970,7 +2147,6 @@
     $("#add-stamp-calendar-btn").addEventListener("click", () => stampForm());
     $("#add-stamp-btn").addEventListener("click", () => stampForm());
     $("#add-post-btn").addEventListener("click", () => postForm());
-    $("#poke-next-btn").addEventListener("click", () => loadRandomPokemon());
     $("#stamp-prev").addEventListener("click", () => {
       state.cursor.setMonth(state.cursor.getMonth() - 1);
       render();
@@ -2081,9 +2257,16 @@
         ensureWeather(true);
         toast("날씨를 다시 불러오는 중이에요.");
       }
-      if (e.target.id === "poke-start-btn" || e.target.id === "poke-retry-btn" || e.target.id === "poke-next-round") {
-        loadRandomPokemon();
+      if (e.target.id === "poke-start-session") {
+        const form = document.getElementById("poke-setup-form");
+        if (!form) return;
+        const fd = new FormData(form);
+        startPokeSession(fd.get("playerId") || "jaesang", fd.get("customName"));
       }
+      if (e.target.id === "poke-retry-btn") loadRandomPokemon();
+      if (e.target.id === "poke-back-setup" || e.target.id === "poke-play-again") resetPokeToSetup();
+      if (e.target.id === "poke-next-round") pokeNextRound();
+      if (e.target.id === "poke-show-rank") endPokeSession();
       const pokeChoice = e.target.closest("[data-poke-choice]");
       if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
       if (e.target.id === "save-rates") {
@@ -2259,6 +2442,11 @@
     });
 
     document.body.addEventListener("change", (e) => {
+      if (e.target.name === "playerId" && e.target.closest("#poke-setup-form")) {
+        state.pokeSession.playerId = e.target.value;
+        const wrap = $("#poke-other-wrap");
+        if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
+      }
       if (e.target.name === "allDay") {
         const wrap = $("#time-fields");
         if (wrap) wrap.style.display = e.target.checked ? "none" : "";
@@ -2327,7 +2515,7 @@
   }
 
   initCloud().then(() => {
-    loadPokeScores();
+    loadPokeRank();
     bind();
     ensureWeather();
     render();

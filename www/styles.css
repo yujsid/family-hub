@@ -1075,6 +1075,67 @@ input[type="radio"] {
   justify-content: center;
 }
 .poke-actions button { min-width: 110px; }
+.poke-setup-title {
+  margin: 0 0 12px;
+  font-family: "Jua", sans-serif;
+  font-size: 22px;
+  text-align: center;
+}
+.poke-player-list {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.poke-player-opt span {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.poke-other-wrap { text-align: left; }
+.poke-wrong-streak.is-warn {
+  color: #c62828;
+  font-weight: 800;
+}
+.poke-rank-heading {
+  margin: 16px 0 8px;
+  font-family: "Jua", sans-serif;
+  font-size: 20px;
+  text-align: center;
+}
+.poke-last-result {
+  margin: 0 0 8px;
+  font-size: 18px;
+  text-align: center;
+}
+.poke-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.poke-rank-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.poke-rank-num {
+  font-weight: 800;
+  color: var(--coral);
+  text-align: center;
+}
+.poke-rank-name { font-weight: 700; text-align: left; }
+.poke-rank-score { font-weight: 800; color: var(--muted); }
+.poke-rank-empty {
+  padding: 12px;
+  color: var(--muted);
+  text-align: center;
+}
 
 .toast {
   position: fixed;

@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v15";
+const CACHE = "family-hub-v16";
 const ASSETS = [
   "./",
   "./index.html",
