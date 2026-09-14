@@ -510,6 +510,7 @@ button.primary {
   display: grid;
   gap: 14px;
 }
+.todo-delayed-block,
 .todo-overdue-block {
   background: #fff7f7;
   border: 1px solid #f5c2c2;

@@ -777,7 +777,7 @@
       <input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />
       <div class="item-body">
         <strong>${done ? "✓ " : "○ "}${esc(occ.title)}</strong>
-        <div class="meta">${esc(m.name)} · ${formatTodoDateLabel(d)} · ${time}${isRecurring(ev) ? " · 반복" : ""}${overdue && !done ? " · 지남" : ""}</div>
+        <div class="meta">${esc(m.name)} · ${formatTodoDateLabel(d)} · ${time}${isRecurring(ev) ? " · 반복" : ""}${overdue && !done ? " · 지연" : ""}</div>
       </div>
       <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
     </div>`;
@@ -814,13 +814,13 @@
     };
   }
 
-  function overdueTodoItems() {
+  function delayedTodoItems() {
     const today = startOfDay(new Date());
     let scanEnd = addDays(today, -TODO_OVERDUE_SCAN_DAYS);
     state.events.forEach((ev) => {
       if (ev.kind !== "todo") return;
       const start = parseYmd(ev.date);
-      if (start < today && start > scanEnd) scanEnd = start;
+      if (start < today && start < scanEnd) scanEnd = start;
     });
     const items = [];
     for (let d = addDays(today, -1); d >= scanEnd; d = addDays(d, -1)) {
@@ -861,12 +861,12 @@
     const { today, start, end } = getTodoVisibleRange();
     title.textContent = todoRangeLabel(start, end);
     const parts = [];
-    const overdue = overdueTodoItems();
+    const delayed = delayedTodoItems();
 
-    if (overdue.length) {
-      parts.push(`<section class="todo-overdue-block">
-        <h3 class="todo-section-title">지난 할일 <span class="todo-badge is-past">미완료 ${overdue.length}</span></h3>
-        <div class="day-list">${overdue.map(({ ev, d }) => todoRowHtml(ev, d, { overdue: true })).join("")}</div>
+    if (delayed.length) {
+      parts.push(`<section class="todo-delayed-block">
+        <h3 class="todo-section-title">지연된 할일 <span class="todo-badge is-past">${delayed.length}건</span></h3>
+        <div class="day-list">${delayed.map(({ ev, d }) => todoRowHtml(ev, d, { overdue: true })).join("")}</div>
       </section>`);
     }
 
@@ -877,7 +877,7 @@
     }
     parts.push(...daySections);
 
-    if (!overdue.length && !daySections.length) {
+    if (!delayed.length && !daySections.length) {
       parts.push(emptyState("표시할 할 일이 없어요. 위에서 추가해 보세요."));
     }
 
