@@ -25,7 +25,8 @@
   const WEATHER_CACHE_KEY = "family-hub-weather-cache";
   const POKE_RANK_KEY = "family-hub-poke-rank";
   const POKE_QUESTION_SECONDS = 5;
-  const POKE_MAX_WRONG_STREAK = 2;
+  const POKE_MAX_WRONG = 2;
+  const POKE_CORRECT_DELAY_MS = 800;
   const POKE_PLAYER_OPTIONS = [
     { id: "jaesang", name: "유재상" },
     { id: "sinjeong", name: "윤신정" },
@@ -86,7 +87,7 @@
       playerName: "",
       round: 0,
       score: 0,
-      wrongStreak: 0,
+      wrongCount: 0,
       endReason: "",
     },
     pokeRank: [],
@@ -99,6 +100,7 @@
 
   let db = null;
   let pokeTimerId = null;
+  let pokeAdvanceTimeout = null;
   let familyRef = null;
   let saveTimer = null;
 
@@ -1472,14 +1474,16 @@
   }
 
   function getPokeRankBoard() {
-    const best = {};
-    state.pokeRank.forEach((e) => {
-      const prev = best[e.name];
-      if (!prev || e.score > prev.score || (e.score === prev.score && e.at > prev.at)) {
-        best[e.name] = e;
-      }
-    });
-    return Object.values(best).sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name), "ko"));
+    return [...state.pokeRank].sort(
+      (a, b) => b.score - a.score || String(b.at || "").localeCompare(String(a.at || ""))
+    );
+  }
+
+  function clearPokeAdvance() {
+    if (pokeAdvanceTimeout != null) {
+      clearTimeout(pokeAdvanceTimeout);
+      pokeAdvanceTimeout = null;
+    }
   }
 
   function clearPokeTimer() {
@@ -1529,23 +1533,30 @@
     s.round += 1;
     if (isCorrect) {
       s.score += 1;
-      s.wrongStreak = 0;
       g.message = "정답이에요!";
       toast(`정답! ${g.nameKo}`);
-    } else {
-      s.wrongStreak += 1;
-      if (pickedId == null) {
-        g.message = "시간 초과! 틀렸어요.";
-      } else {
-        const picked = g.choices.find((c) => c.id === pickedId);
-        g.message = picked ? `"${picked.nameKo}"(은)는 틀렸어요.` : "틀렸어요.";
-      }
-      if (s.wrongStreak >= POKE_MAX_WRONG_STREAK) {
-        g.message += ` 연속 ${POKE_MAX_WRONG_STREAK}회 오답!`;
-        s.endReason = "fail";
-      }
-      toast(`정답은 ${g.nameKo}입니다.`);
+      renderPokeGame();
+      clearPokeAdvance();
+      pokeAdvanceTimeout = setTimeout(() => {
+        pokeAdvanceTimeout = null;
+        if (s.phase === "playing" && g.answered && s.wrongCount < POKE_MAX_WRONG) {
+          loadRandomPokemon();
+        }
+      }, POKE_CORRECT_DELAY_MS);
+      return;
     }
+    s.wrongCount += 1;
+    if (pickedId == null) {
+      g.message = "시간 초과! 틀렸어요.";
+    } else {
+      const picked = g.choices.find((c) => c.id === pickedId);
+      g.message = picked ? `"${picked.nameKo}"(은)는 틀렸어요.` : "틀렸어요.";
+    }
+    if (s.wrongCount >= POKE_MAX_WRONG) {
+      g.message += ` ${POKE_MAX_WRONG}회 틀려서 탈락!`;
+      s.endReason = "fail";
+    }
+    toast(`정답은 ${g.nameKo}입니다.`);
     renderPokeGame();
   }
 
@@ -1571,7 +1582,7 @@
             이름
             <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
           </label>
-          <p class="hint">문제당 <strong>${POKE_QUESTION_SECONDS}초</strong> · 연속 <strong>${POKE_MAX_WRONG_STREAK}회</strong> 오답 시 종료</p>
+          <p class="hint">문제당 <strong>${POKE_QUESTION_SECONDS}초</strong> · <strong>${POKE_MAX_WRONG}회</strong> 틀리면 탈락</p>
           <button class="primary" type="button" id="poke-start-session">게임 시작</button>
         </form>
       </div>`;
@@ -1595,7 +1606,7 @@
       <div class="poke-card poke-rank-card">
         <h3 class="poke-setup-title">게임 종료</h3>
         <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score}점 · ${s.round}문제</p>
-        <p class="hint">연속 ${POKE_MAX_WRONG_STREAK}회 오답으로 게임이 끝났어요.</p>
+        <p class="hint">${POKE_MAX_WRONG}회 틀려서 게임이 끝났어요.</p>
         <h4 class="poke-rank-heading">Rank</h4>
         <ol class="poke-rank-list">${list}</ol>
         <div class="poke-actions">
@@ -1645,12 +1656,13 @@
         return `<button type="button" class="${cls}" data-poke-choice="${c.id}" ${g.answered ? "disabled" : ""}>${esc(c.nameKo)}</button>`;
       })
       .join("");
-    const sessionEnded = g.answered && s.wrongStreak >= POKE_MAX_WRONG_STREAK;
+    const sessionEnded = g.answered && s.wrongCount >= POKE_MAX_WRONG;
+    const wasCorrect = g.answered && g.pickedId === g.id;
     let actionHtml = "";
     if (g.answered) {
       if (sessionEnded) {
         actionHtml = `<button class="primary" type="button" id="poke-show-rank">순위 보기</button>`;
-      } else {
+      } else if (!wasCorrect) {
         actionHtml = `<button class="primary" type="button" id="poke-next-round">다음 문제 (${s.round + 1}번째)</button>`;
       }
     } else {
@@ -1665,7 +1677,7 @@
         <span>문제 <strong>${s.round + 1}</strong>번째</span>
         <span>점수 <strong>${s.score}</strong></span>
         ${countdownHtml}
-        <span class="poke-wrong-streak${s.wrongStreak ? " is-warn" : ""}">연속 오답 ${s.wrongStreak}/${POKE_MAX_WRONG_STREAK}</span>
+        <span class="poke-wrong-streak${s.wrongCount ? " is-warn" : ""}">오답 ${s.wrongCount}/${POKE_MAX_WRONG}</span>
       </div>
       <div class="poke-card">
         <div class="poke-stage">
@@ -1679,13 +1691,14 @@
 
   function resetPokeToSetup() {
     clearPokeTimer();
+    clearPokeAdvance();
     state.pokeSession = {
       phase: "setup",
       playerId: state.pokeSession.playerId || "jaesang",
       playerName: "",
       round: 0,
       score: 0,
-      wrongStreak: 0,
+      wrongCount: 0,
       endReason: "",
     };
     state.pokeGame.id = null;
@@ -1706,7 +1719,7 @@
       playerName,
       round: 0,
       score: 0,
-      wrongStreak: 0,
+      wrongCount: 0,
       endReason: "",
     };
     loadRandomPokemon();
@@ -1716,6 +1729,7 @@
     const s = state.pokeSession;
     if (s.phase !== "playing") return;
     clearPokeTimer();
+    clearPokeAdvance();
     if (!s.endReason) s.endReason = "fail";
     addPokeRankEntry({
       name: s.playerName,
@@ -1734,6 +1748,7 @@
     const s = state.pokeSession;
     if (s.phase !== "playing") return;
     clearPokeTimer();
+    clearPokeAdvance();
     g.loading = true;
     g.error = "";
     g.message = "";
@@ -1790,7 +1805,7 @@
     const s = state.pokeSession;
     const g = state.pokeGame;
     if (s.phase !== "playing" || !g.answered) return;
-    if (s.wrongStreak >= POKE_MAX_WRONG_STREAK) {
+    if (s.wrongCount >= POKE_MAX_WRONG) {
       endPokeSession();
       return;
     }
