@@ -1034,11 +1034,39 @@ input[type="radio"] {
   font-weight: 700;
   color: var(--coral);
 }
-.poke-guess-form {
+.poke-choices {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  margin-bottom: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+.poke-choice {
+  min-height: 52px;
+  padding: 12px 10px;
+  font-size: 16px;
+  font-weight: 800;
+  font-family: "Jua", sans-serif;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+.poke-choice:not(:disabled):active {
+  transform: scale(0.98);
+}
+.poke-choice.is-correct {
+  border-color: #2e7d32;
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+.poke-choice.is-wrong {
+  border-color: #c62828;
+  background: #ffebee;
+  color: #b71c1c;
+}
+.poke-choice.is-dim {
+  opacity: 0.55;
 }
 .poke-actions {
   display: flex;

@@ -59,14 +59,18 @@
     pokeGame: {
       loading: false,
       revealed: false,
+      answered: false,
+      pickedId: null,
       id: null,
       image: "",
       nameKo: "",
       nameEn: "",
+      choices: [],
       message: "",
       error: "",
-      hintUsed: false,
     },
+    pokeNamePool: [],
+    pokeNamePoolLoading: false,
     pokeScore: 0,
     pokeStreak: 0,
     cloudReady: false,
@@ -1341,6 +1345,90 @@
     render();
   }
 
+  function shuffleArray(arr) {
+    const out = [...arr];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  async function fetchPokeNameKo(id) {
+    const res = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${id}`);
+    if (!res.ok) throw new Error(`species ${id}`);
+    const species = await res.json();
+    const ko = (species.names || []).find((n) => n.language?.name === "ko");
+    return { id, nameKo: ko?.name || species.name };
+  }
+
+  async function ensurePokeNamePool() {
+    if (state.pokeNamePool.length >= POKE_MAX_ID) return;
+    if (state.pokeNamePoolLoading) {
+      while (state.pokeNamePoolLoading) await new Promise((r) => setTimeout(r, 80));
+      return;
+    }
+    state.pokeNamePoolLoading = true;
+    try {
+      const pool = [];
+      const batchSize = 25;
+      for (let start = 1; start <= POKE_MAX_ID; start += batchSize) {
+        const end = Math.min(start + batchSize - 1, POKE_MAX_ID);
+        const batch = await Promise.all(
+          Array.from({ length: end - start + 1 }, (_, i) => fetchPokeNameKo(start + i))
+        );
+        pool.push(...batch);
+      }
+      state.pokeNamePool = pool;
+    } catch (_) {
+      /* pool partial ok */
+    } finally {
+      state.pokeNamePoolLoading = false;
+    }
+  }
+
+  function pokeNameSimilarity(nameA, nameB, idA, idB) {
+    let score = 0;
+    if (!nameA || !nameB) return score;
+    if (nameA[0] === nameB[0]) score += 5;
+    if (Math.abs(nameA.length - nameB.length) <= 1) score += 3;
+    if (nameA.slice(-1) === nameB.slice(-1)) score += 2;
+    if (Math.abs(idA - idB) <= 3) score += 3;
+    else if (Math.abs(idA - idB) <= 12) score += 1;
+    for (let i = 0; i < nameA.length - 1; i++) {
+      const chunk = nameA.slice(i, i + 2);
+      if (chunk.length === 2 && nameB.includes(chunk)) score += 1;
+    }
+    return score + Math.random() * 0.3;
+  }
+
+  function buildPokeChoices(correctId) {
+    const correct = state.pokeNamePool.find((p) => p.id === correctId);
+    if (!correct) return [];
+    const others = state.pokeNamePool.filter((p) => p.id !== correctId);
+    const ranked = others
+      .map((p) => ({ ...p, score: pokeNameSimilarity(correct.nameKo, p.nameKo, correctId, p.id) }))
+      .sort((a, b) => b.score - a.score);
+    const wrong = [];
+    const used = new Set([correctId]);
+    for (const p of ranked) {
+      if (wrong.length >= 3) break;
+      if (!used.has(p.id)) {
+        wrong.push(p);
+        used.add(p.id);
+      }
+    }
+    let guard = 0;
+    while (wrong.length < 3 && guard++ < 50) {
+      const pick = others[Math.floor(Math.random() * others.length)];
+      if (pick && !used.has(pick.id)) {
+        wrong.push(pick);
+        used.add(pick.id);
+      }
+    }
+    return shuffleArray([correct, ...wrong.slice(0, 3)]);
+  }
+
   function loadPokeScores() {
     try {
       state.pokeScore = Number(localStorage.getItem(POKE_SCORE_KEY)) || 0;
@@ -1360,20 +1448,12 @@
     }
   }
 
-  function normalizePokeGuess(s) {
-    return String(s || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, "")
-      .replace(/[.\-_'’]/g, "");
-  }
-
   function renderPokeGame() {
     const root = $("#poke-game-root");
     if (!root) return;
     const g = state.pokeGame;
     if (g.loading) {
-      root.innerHTML = `<div class="poke-card"><p class="hint">포켓몬을 불러오는 중…</p></div>`;
+      root.innerHTML = `<div class="poke-card"><p class="hint">포켓몬을 불러오는 중…${state.pokeNamePool.length ? "" : " (이름 목록 준비 중)"}</p></div>`;
       return;
     }
     if (g.error) {
@@ -1391,6 +1471,17 @@
       return;
     }
     const revealedClass = g.revealed ? "is-revealed" : "is-silhouette";
+    const choiceHtml = (g.choices || [])
+      .map((c) => {
+        let cls = "poke-choice";
+        if (g.answered) {
+          if (c.id === g.id) cls += " is-correct";
+          else if (c.id === g.pickedId) cls += " is-wrong";
+          else cls += " is-dim";
+        }
+        return `<button type="button" class="${cls}" data-poke-choice="${c.id}" ${g.answered ? "disabled" : ""}>${esc(c.nameKo)}</button>`;
+      })
+      .join("");
     root.innerHTML = `
       <div class="poke-scorebar">
         <span>점수 <strong>${state.pokeScore}</strong></span>
@@ -1401,27 +1492,16 @@
         <div class="poke-stage">
           <img class="poke-sprite ${revealedClass}" src="${esc(g.image)}" alt="포켓몬" draggable="false" />
         </div>
-        <p class="poke-prompt">${g.revealed ? `정답은 <strong>${esc(g.nameKo)}</strong> (${esc(g.nameEn)})!` : "이 포켓몬의 이름은?"}</p>
+        <p class="poke-prompt">${g.revealed ? `정답은 <strong>${esc(g.nameKo)}</strong>!` : "보기에서 이름을 골라 주세요"}</p>
         ${g.message ? `<p class="poke-message">${esc(g.message)}</p>` : ""}
         ${
           g.revealed
             ? `<div class="poke-actions">
                 <button class="primary" type="button" id="poke-next-round">다음 포켓몬</button>
               </div>`
-            : `<form id="poke-guess-form" class="poke-guess-form" action="#" method="post">
-                <input name="guess" id="poke-guess-input" maxlength="40" placeholder="이름 입력 (한글/영어)" autocomplete="off" required />
-                <button class="primary" type="submit">정답!</button>
-              </form>
-              <div class="poke-actions">
-                <button type="button" id="poke-hint-btn">힌트</button>
-                <button type="button" id="poke-reveal-btn">정답 보기</button>
-              </div>`
+            : `<div class="poke-choices">${choiceHtml}</div>`
         }
       </div>`;
-    if (!g.revealed) {
-      const input = $("#poke-guess-input");
-      if (input) requestAnimationFrame(() => input.focus());
-    }
   }
 
   async function loadRandomPokemon() {
@@ -1430,10 +1510,13 @@
     g.error = "";
     g.message = "";
     g.revealed = false;
-    g.hintUsed = false;
+    g.answered = false;
+    g.pickedId = null;
+    g.choices = [];
     renderPokeGame();
     const id = Math.floor(Math.random() * POKE_MAX_ID) + 1;
     try {
+      await ensurePokeNamePool();
       const [pokeRes, speciesRes] = await Promise.all([
         fetch(`https://pokeapi.co/api/v2/pokemon/${id}`),
         fetch(`https://pokeapi.co/api/v2/pokemon-species/${id}`),
@@ -1452,6 +1535,11 @@
       g.image = image;
       g.nameKo = ko?.name || poke.name;
       g.nameEn = en?.name || poke.name;
+      if (!state.pokeNamePool.some((p) => p.id === g.id)) {
+        state.pokeNamePool.push({ id: g.id, nameKo: g.nameKo });
+      }
+      g.choices = buildPokeChoices(g.id);
+      if (g.choices.length < 4) throw new Error("보기를 만들지 못했어요. 다시 시도해 주세요.");
       g.loading = false;
       renderPokeGame();
     } catch (err) {
@@ -1462,43 +1550,24 @@
     }
   }
 
-  function checkPokeGuess(raw) {
+  function pickPokeChoice(choiceId) {
     const g = state.pokeGame;
-    if (!g.id || g.revealed) return;
-    const guess = normalizePokeGuess(raw);
-    if (!guess) return toast("이름을 입력해 주세요.");
-    const answers = [g.nameKo, g.nameEn].map(normalizePokeGuess);
-    if (answers.includes(guess)) {
-      g.revealed = true;
+    if (!g.id || g.answered) return;
+    const id = Number(choiceId);
+    g.answered = true;
+    g.pickedId = id;
+    g.revealed = true;
+    if (id === g.id) {
       g.message = "정답이에요!";
       state.pokeScore += 1;
       state.pokeStreak += 1;
-      savePokeScores();
-      renderPokeGame();
       toast(`정답! ${g.nameKo}`);
-      return;
+    } else {
+      const picked = g.choices.find((c) => c.id === id);
+      g.message = picked ? `"${picked.nameKo}"(은)는 틀렸어요.` : "틀렸어요.";
+      state.pokeStreak = 0;
+      toast(`정답은 ${g.nameKo}입니다.`);
     }
-    state.pokeStreak = 0;
-    savePokeScores();
-    g.message = "틀렸어요. 다시 생각해 보세요!";
-    renderPokeGame();
-  }
-
-  function hintPoke() {
-    const g = state.pokeGame;
-    if (!g.id || g.revealed) return;
-    g.hintUsed = true;
-    const name = g.nameKo || g.nameEn;
-    g.message = `힌트: "${name[0]}" 으로 시작해요. (${name.length}글자)`;
-    renderPokeGame();
-  }
-
-  function revealPoke() {
-    const g = state.pokeGame;
-    if (!g.id || g.revealed) return;
-    g.revealed = true;
-    g.message = "아쉽네요. 다음 문제에 도전해 보세요!";
-    state.pokeStreak = 0;
     savePokeScores();
     renderPokeGame();
   }
@@ -1515,6 +1584,7 @@
     if (state.tab === "game") {
       loadPokeScores();
       renderPokeGame();
+      ensurePokeNamePool();
       if (!state.pokeGame.id && !state.pokeGame.loading && !state.pokeGame.error) {
         loadRandomPokemon();
       }
@@ -2014,8 +2084,8 @@
       if (e.target.id === "poke-start-btn" || e.target.id === "poke-retry-btn" || e.target.id === "poke-next-round") {
         loadRandomPokemon();
       }
-      if (e.target.id === "poke-hint-btn") hintPoke();
-      if (e.target.id === "poke-reveal-btn") revealPoke();
+      const pokeChoice = e.target.closest("[data-poke-choice]");
+      if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
         if (form) saveCategoriesFromForm(form);
@@ -2225,7 +2295,7 @@
     document.addEventListener("submit", async (e) => {
       const formId = e.target && e.target.id;
       const isComment = e.target && e.target.classList && e.target.classList.contains("comment-form");
-      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form", "poke-guess-form"].includes(formId) && !isComment) return;
+      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form"].includes(formId) && !isComment) return;
       e.preventDefault();
       if (formId === "event-form") {
         saveEventFromForm(e.target);
@@ -2235,10 +2305,6 @@
       }
       if (formId === "post-form") {
         savePostFromForm(e.target);
-      }
-      if (formId === "poke-guess-form") {
-        const fd = new FormData(e.target);
-        checkPokeGuess(fd.get("guess"));
       }
       if (isComment) {
         saveCommentFromForm(e.target);
