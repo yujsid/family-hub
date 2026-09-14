@@ -1331,6 +1331,11 @@ input[type="radio"] {
   color: var(--muted);
   text-align: center;
 }
+.poke-rank-modal .poke-rank-list {
+  max-height: min(50vh, 360px);
+  overflow: auto;
+  margin-bottom: 12px;
+}
 
 .toast {
   position: fixed;

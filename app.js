@@ -1804,6 +1804,33 @@
     resolvePokeAnswer(false, null);
   }
 
+  function pokeRankListHtml() {
+    const board = getPokeRankBoard();
+    if (!board.length) return `<li class="poke-rank-empty">아직 기록이 없어요.</li>`;
+    return board
+      .map(
+        (e, i) => `<li class="poke-rank-row rank-${i + 1}">
+          <span class="poke-rank-num">${pokeRankMedal(i + 1)}</span>
+          <span class="poke-rank-name">${esc(e.name)}</span>
+          <span class="poke-rank-score">${e.score}점</span>
+        </li>`
+      )
+      .join("");
+  }
+
+  function openPokeRankModal() {
+    openModal(`
+      <div class="poke-rank-modal">
+        <h3 class="poke-setup-title">Rank TOP ${POKE_RANK_TOP}</h3>
+        <p class="hint">가족 공유 순위입니다. 점수가 높은 순으로 보여요.</p>
+        <ol class="poke-rank-list">${pokeRankListHtml()}</ol>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">닫기</button>
+        </div>
+      </div>
+    `);
+  }
+
   function renderPokeSetupHtml() {
     const s = state.pokeSession;
     const opts = POKE_PLAYER_OPTIONS.map(
@@ -1823,34 +1850,26 @@
             <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
           </label>
           <p class="hint">문제당 <strong>${POKE_QUESTION_SECONDS}초</strong> · <strong>${POKE_MAX_WRONG}회</strong> 틀리면 탈락</p>
-          <button class="primary" type="button" id="poke-start-session">게임 시작</button>
+          <div class="poke-actions">
+            <button class="primary" type="button" id="poke-start-session">게임 시작</button>
+            <button type="button" class="poke-open-rank-btn">순위 보기</button>
+          </div>
         </form>
       </div>`;
   }
 
   function renderPokeRankHtml() {
     const s = state.pokeSession;
-    const board = getPokeRankBoard();
-    const list = board.length
-      ? board
-          .map(
-            (e, i) => `<li class="poke-rank-row rank-${i + 1}">
-              <span class="poke-rank-num">${pokeRankMedal(i + 1)}</span>
-              <span class="poke-rank-name">${esc(e.name)}</span>
-              <span class="poke-rank-score">${e.score}점</span>
-            </li>`
-          )
-          .join("")
-      : `<li class="poke-rank-empty">아직 기록이 없어요.</li>`;
     return `
       <div class="poke-card poke-rank-card">
         <h3 class="poke-setup-title">게임 종료</h3>
         <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score}점 · ${s.round}문제</p>
         <p class="hint">${POKE_MAX_WRONG}회 틀려서 게임이 끝났어요.</p>
         <h4 class="poke-rank-heading">Rank TOP ${POKE_RANK_TOP}</h4>
-        <ol class="poke-rank-list">${list}</ol>
+        <ol class="poke-rank-list">${pokeRankListHtml()}</ol>
         <div class="poke-actions">
           <button class="primary" type="button" id="poke-play-again">다시 하기</button>
+          <button type="button" class="poke-open-rank-btn">순위 보기</button>
         </div>
       </div>`;
   }
@@ -2566,6 +2585,7 @@
       }
       if (e.target.id === "poke-retry-btn") loadRandomPokemon();
       if (e.target.id === "poke-back-setup" || e.target.id === "poke-play-again") resetPokeToSetup();
+      if (e.target.id === "poke-open-rank" || e.target.closest(".poke-open-rank-btn")) openPokeRankModal();
       const pokeChoice = e.target.closest("[data-poke-choice]");
       if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
       if (e.target.id === "save-rates") {
