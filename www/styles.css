@@ -1094,6 +1094,125 @@ input[type="radio"] {
   filter: none;
   transform: scale(1.04);
 }
+.poke-sprite.is-pop {
+  animation: pokeSpritePop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.poke-sprite.is-shake {
+  animation: pokeSpriteShake 0.45s ease;
+}
+.poke-card--correct {
+  animation: pokeFlashCorrect 0.65s ease;
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2e7d32 25%, transparent), var(--shadow);
+}
+.poke-card--wrong {
+  animation: pokeShakeCard 0.5s ease;
+  border-color: #c62828;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #c62828 20%, transparent), var(--shadow);
+}
+.poke-card--urgent {
+  animation: pokeUrgentPulse 0.85s ease-in-out infinite;
+  border-color: #e65100;
+}
+.poke-card--fail {
+  animation: pokeFailBurst 0.8s ease;
+  border-color: #b71c1c;
+  background: linear-gradient(180deg, #fff5f5, var(--paper));
+}
+.poke-score-pop strong {
+  display: inline-block;
+  animation: pokeScorePop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: #2e7d32;
+}
+.poke-message--correct {
+  color: #2e7d32;
+  animation: pokeMessagePop 0.45s ease;
+}
+.poke-message--wrong {
+  animation: pokeMessageShake 0.4s ease;
+}
+.poke-countdown.is-warn {
+  animation: pokeCountdownPulse 0.55s ease-in-out infinite;
+}
+.poke-choice.is-correct {
+  animation: pokeChoiceCorrect 0.45s ease;
+}
+.poke-choice.is-wrong {
+  animation: pokeChoiceWrong 0.4s ease;
+}
+.poke-rank-row.rank-1 {
+  border-color: #f0c419;
+  background: linear-gradient(90deg, #fff9e6, #fff);
+}
+.poke-rank-row.rank-2 {
+  border-color: #b0bec5;
+  background: linear-gradient(90deg, #f5f7f8, #fff);
+}
+.poke-rank-row.rank-3 {
+  border-color: #cd7f32;
+  background: linear-gradient(90deg, #fff4ea, #fff);
+}
+@keyframes pokeSpritePop {
+  0% { transform: scale(0.85); filter: brightness(1.2); }
+  55% { transform: scale(1.12); }
+  100% { transform: scale(1.04); filter: none; }
+}
+@keyframes pokeSpriteShake {
+  0%, 100% { transform: translateX(0) scale(1.04); }
+  20% { transform: translateX(-8px) rotate(-2deg); }
+  40% { transform: translateX(8px) rotate(2deg); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+@keyframes pokeFlashCorrect {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, #2e7d32 50%, transparent); }
+  40% { box-shadow: 0 0 24px 4px color-mix(in srgb, #2e7d32 35%, transparent); }
+  100% { box-shadow: 0 0 0 3px color-mix(in srgb, #2e7d32 25%, transparent), var(--shadow); }
+}
+@keyframes pokeShakeCard {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(6px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+}
+@keyframes pokeUrgentPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #e65100 30%, transparent), var(--shadow); }
+  50% { box-shadow: 0 0 18px 2px color-mix(in srgb, #e65100 45%, transparent), var(--shadow); }
+}
+@keyframes pokeFailBurst {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+@keyframes pokeScorePop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+@keyframes pokeMessagePop {
+  0% { transform: scale(0.92); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes pokeMessageShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+@keyframes pokeCountdownPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+@keyframes pokeChoiceCorrect {
+  0% { transform: scale(0.96); }
+  50% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+@keyframes pokeChoiceWrong {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
 .poke-prompt {
   margin: 0 0 8px;
   font-family: "Jua", sans-serif;

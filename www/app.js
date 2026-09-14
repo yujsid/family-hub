@@ -31,7 +31,10 @@
   const POKE_RANK_KEY = "family-hub-poke-rank";
   const POKE_QUESTION_SECONDS = 5;
   const POKE_MAX_WRONG = 2;
-  const POKE_CORRECT_DELAY_MS = 800;
+  const POKE_RANK_TOP = 5;
+  const POKE_CORRECT_DELAY_MS = 700;
+  const POKE_WRONG_DELAY_MS = 900;
+  const POKE_FAIL_DELAY_MS = 1400;
   const POKE_PLAYER_OPTIONS = [
     { id: "jaesang", name: "유재상" },
     { id: "sinjeong", name: "윤신정" },
@@ -89,6 +92,7 @@
       message: "",
       error: "",
       countdown: 0,
+      feedback: "",
     },
     pokeNamePool: [],
     pokeNamePoolLoading: false,
@@ -1640,10 +1644,34 @@
     savePokeRank();
   }
 
-  function getPokeRankBoard() {
-    return [...state.pokeRank].sort(
+  function getPokeRankBoard(limit = POKE_RANK_TOP) {
+    const sorted = [...state.pokeRank].sort(
       (a, b) => b.score - a.score || String(b.at || "").localeCompare(String(a.at || ""))
     );
+    return limit ? sorted.slice(0, limit) : sorted;
+  }
+
+  function pokeRankMedal(rank) {
+    if (rank === 1) return "🥇";
+    if (rank === 2) return "🥈";
+    if (rank === 3) return "🥉";
+    return rank;
+  }
+
+  function schedulePokeAdvance() {
+    clearPokeAdvance();
+    const g = state.pokeGame;
+    const s = state.pokeSession;
+    const isCorrect = g.pickedId === g.id;
+    let delay = POKE_WRONG_DELAY_MS;
+    if (s.wrongCount >= POKE_MAX_WRONG) delay = POKE_FAIL_DELAY_MS;
+    else if (isCorrect) delay = POKE_CORRECT_DELAY_MS;
+    pokeAdvanceTimeout = setTimeout(() => {
+      pokeAdvanceTimeout = null;
+      if (s.phase !== "playing" || !g.answered) return;
+      if (s.wrongCount >= POKE_MAX_WRONG) endPokeSession();
+      else loadRandomPokemon();
+    }, delay);
   }
 
   function clearPokeAdvance() {
@@ -1698,33 +1726,27 @@
     g.pickedId = pickedId;
     g.revealed = true;
     s.round += 1;
+    g.feedback = isCorrect ? "correct" : "wrong";
     if (isCorrect) {
       s.score += 1;
-      g.message = "정답이에요!";
+      g.message = "정답! 🎉";
       toast(`정답! ${g.nameKo}`);
-      renderPokeGame();
-      clearPokeAdvance();
-      pokeAdvanceTimeout = setTimeout(() => {
-        pokeAdvanceTimeout = null;
-        if (s.phase === "playing" && g.answered && s.wrongCount < POKE_MAX_WRONG) {
-          loadRandomPokemon();
-        }
-      }, POKE_CORRECT_DELAY_MS);
-      return;
-    }
-    s.wrongCount += 1;
-    if (pickedId == null) {
-      g.message = "시간 초과! 틀렸어요.";
     } else {
-      const picked = g.choices.find((c) => c.id === pickedId);
-      g.message = picked ? `"${picked.nameKo}"(은)는 틀렸어요.` : "틀렸어요.";
+      s.wrongCount += 1;
+      if (pickedId == null) {
+        g.message = "시간 초과! ⏰";
+      } else {
+        const picked = g.choices.find((c) => c.id === pickedId);
+        g.message = picked ? `"${picked.nameKo}"(은)는 틀렸어요!` : "틀렸어요!";
+      }
+      if (s.wrongCount >= POKE_MAX_WRONG) {
+        g.message = `${POKE_MAX_WRONG}회 틀려서 탈락! 💥`;
+        s.endReason = "fail";
+      }
+      toast(`정답은 ${g.nameKo}입니다.`);
     }
-    if (s.wrongCount >= POKE_MAX_WRONG) {
-      g.message += ` ${POKE_MAX_WRONG}회 틀려서 탈락!`;
-      s.endReason = "fail";
-    }
-    toast(`정답은 ${g.nameKo}입니다.`);
     renderPokeGame();
+    schedulePokeAdvance();
   }
 
   function handlePokeTimeout() {
@@ -1761,8 +1783,8 @@
     const list = board.length
       ? board
           .map(
-            (e, i) => `<li class="poke-rank-row">
-              <span class="poke-rank-num">${i + 1}</span>
+            (e, i) => `<li class="poke-rank-row rank-${i + 1}">
+              <span class="poke-rank-num">${pokeRankMedal(i + 1)}</span>
               <span class="poke-rank-name">${esc(e.name)}</span>
               <span class="poke-rank-score">${e.score}점</span>
             </li>`
@@ -1774,7 +1796,7 @@
         <h3 class="poke-setup-title">게임 종료</h3>
         <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score}점 · ${s.round}문제</p>
         <p class="hint">${POKE_MAX_WRONG}회 틀려서 게임이 끝났어요.</p>
-        <h4 class="poke-rank-heading">Rank</h4>
+        <h4 class="poke-rank-heading">Rank TOP ${POKE_RANK_TOP}</h4>
         <ol class="poke-rank-list">${list}</ol>
         <div class="poke-actions">
           <button class="primary" type="button" id="poke-play-again">다시 하기</button>
@@ -1824,35 +1846,32 @@
       })
       .join("");
     const sessionEnded = g.answered && s.wrongCount >= POKE_MAX_WRONG;
-    const wasCorrect = g.answered && g.pickedId === g.id;
-    let actionHtml = "";
-    if (g.answered) {
-      if (sessionEnded) {
-        actionHtml = `<button class="primary" type="button" id="poke-show-rank">순위 보기</button>`;
-      } else if (!wasCorrect) {
-        actionHtml = `<button class="primary" type="button" id="poke-next-round">다음 문제 (${s.round + 1}번째)</button>`;
-      }
-    } else {
-      actionHtml = `<div class="poke-choices">${choiceHtml}</div>`;
-    }
+    const cardFx = [
+      g.feedback ? `poke-card--${g.feedback}` : "",
+      !g.answered && g.countdown <= 2 ? "poke-card--urgent" : "",
+      sessionEnded ? "poke-card--fail" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
     const countdownHtml = g.answered
       ? ""
       : `<span class="poke-countdown${g.countdown <= 2 ? " is-warn" : ""}" id="poke-countdown">${g.countdown || POKE_QUESTION_SECONDS}초</span>`;
+    const scoreFx = g.feedback === "correct" ? " poke-score-pop" : "";
     root.innerHTML = `
       <div class="poke-scorebar">
         <span>참가 <strong>${esc(s.playerName)}</strong></span>
         <span>문제 <strong>${s.round + 1}</strong>번째</span>
-        <span>점수 <strong>${s.score}</strong></span>
+        <span class="poke-score${scoreFx}">점수 <strong>${s.score}</strong></span>
         ${countdownHtml}
         <span class="poke-wrong-streak${s.wrongCount ? " is-warn" : ""}">오답 ${s.wrongCount}/${POKE_MAX_WRONG}</span>
       </div>
-      <div class="poke-card">
+      <div class="poke-card ${cardFx}">
         <div class="poke-stage">
-          <img class="poke-sprite ${revealedClass}" src="${esc(g.image)}" alt="포켓몬" draggable="false" />
+          <img class="poke-sprite ${revealedClass}${g.feedback === "correct" ? " is-pop" : ""}${g.feedback === "wrong" ? " is-shake" : ""}" src="${esc(g.image)}" alt="포켓몬" draggable="false" />
         </div>
         <p class="poke-prompt">${g.revealed ? `정답은 <strong>${esc(g.nameKo)}</strong>!` : "보기에서 이름을 골라 주세요"}</p>
-        ${g.message ? `<p class="poke-message">${esc(g.message)}</p>` : ""}
-        ${actionHtml}
+        ${g.message ? `<p class="poke-message poke-message--${g.feedback || "idle"}">${esc(g.message)}</p>` : ""}
+        <div class="poke-choices">${choiceHtml}</div>
       </div>`;
   }
 
@@ -1919,6 +1938,7 @@
     g.loading = true;
     g.error = "";
     g.message = "";
+    g.feedback = "";
     g.revealed = false;
     g.answered = false;
     g.pickedId = null;
@@ -1966,17 +1986,6 @@
     const s = state.pokeSession;
     if (s.phase !== "playing" || !g.id || g.answered) return;
     resolvePokeAnswer(Number(choiceId) === g.id, Number(choiceId));
-  }
-
-  function pokeNextRound() {
-    const s = state.pokeSession;
-    const g = state.pokeGame;
-    if (s.phase !== "playing" || !g.answered) return;
-    if (s.wrongCount >= POKE_MAX_WRONG) {
-      endPokeSession();
-      return;
-    }
-    loadRandomPokemon();
   }
 
   function render() {
@@ -2507,8 +2516,6 @@
       }
       if (e.target.id === "poke-retry-btn") loadRandomPokemon();
       if (e.target.id === "poke-back-setup" || e.target.id === "poke-play-again") resetPokeToSetup();
-      if (e.target.id === "poke-next-round") pokeNextRound();
-      if (e.target.id === "poke-show-rank") endPokeSession();
       const pokeChoice = e.target.closest("[data-poke-choice]");
       if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
       if (e.target.id === "save-rates") {
