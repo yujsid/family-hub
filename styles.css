@@ -1092,6 +1092,13 @@ input[type="radio"] {
   color: var(--ink);
 }
 .poke-other-wrap { text-align: left; }
+.poke-countdown {
+  font-weight: 700;
+  color: var(--ink);
+}
+.poke-countdown.is-warn {
+  color: #c0392b;
+}
 .poke-wrong-streak.is-warn {
   color: #c62828;
   font-weight: 800;
