@@ -29,6 +29,7 @@
   const WEATHER_KEY_STORAGE = "family-hub-weather-service-key";
   const WEATHER_CACHE_KEY = "family-hub-weather-cache";
   const POKE_RANK_KEY = "family-hub-poke-rank";
+  const POKE_RANK_MIGRATED_KEY = "family-hub-poke-rank-migrated";
   const POKE_QUESTION_SECONDS = 5;
   const POKE_MAX_WRONG = 2;
   const POKE_RANK_TOP = 5;
@@ -177,8 +178,59 @@
       rates: state.rates,
       todoRate: state.todoRate,
       meals: state.meals,
+      pokeRank: state.pokeRank,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
+  }
+
+  function normalizePokeRank(list) {
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((e) => ({
+        name: String(e?.name || "").trim(),
+        score: Number(e?.score) || 0,
+        rounds: Number(e?.rounds) || 0,
+        reason: String(e?.reason || ""),
+        at: String(e?.at || ""),
+      }))
+      .filter((e) => e.name)
+      .slice(-100);
+  }
+
+  function readLocalPokeRank() {
+    try {
+      const raw = localStorage.getItem(POKE_RANK_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return normalizePokeRank(list);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function migrateLocalPokeRankIfNeeded() {
+    try {
+      if (localStorage.getItem(POKE_RANK_MIGRATED_KEY) === "1") return false;
+      const local = readLocalPokeRank();
+      localStorage.setItem(POKE_RANK_MIGRATED_KEY, "1");
+      if (!local.length) {
+        localStorage.removeItem(POKE_RANK_KEY);
+        return false;
+      }
+      const keyOf = (e) => `${e.name}|${e.score}|${e.rounds}|${e.at}`;
+      const seen = new Set(state.pokeRank.map(keyOf));
+      let added = false;
+      local.forEach((e) => {
+        if (seen.has(keyOf(e))) return;
+        state.pokeRank.push(e);
+        seen.add(keyOf(e));
+        added = true;
+      });
+      if (state.pokeRank.length > 100) state.pokeRank = state.pokeRank.slice(-100);
+      localStorage.removeItem(POKE_RANK_KEY);
+      return added;
+    } catch (_) {
+      return false;
+    }
   }
 
   function normalizeMeals(raw) {
@@ -256,8 +308,11 @@
     const todoRate = Number(data.todoRate);
     state.todoRate = Number.isFinite(todoRate) && todoRate >= 0 ? todoRate : 500;
     state.meals = normalizeMeals(data.meals);
+    state.pokeRank = normalizePokeRank(data.pokeRank);
+    const migrated = migrateLocalPokeRankIfNeeded();
     render();
     state.applyingRemote = false;
+    if (migrated) save();
   }
 
   function esc(s) {
@@ -1620,28 +1675,24 @@
     return shuffleArray([correct, ...wrong.slice(0, 3)]);
   }
 
-  function loadPokeRank() {
-    try {
-      const raw = localStorage.getItem(POKE_RANK_KEY);
-      state.pokeRank = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(state.pokeRank)) state.pokeRank = [];
-    } catch (_) {
-      state.pokeRank = [];
+  function addPokeRankEntry(entry) {
+    state.pokeRank.push({
+      name: String(entry?.name || "").trim(),
+      score: Number(entry?.score) || 0,
+      rounds: Number(entry?.rounds) || 0,
+      reason: String(entry?.reason || ""),
+      at: String(entry?.at || new Date().toISOString()),
+    });
+    if (state.pokeRank.length > 100) state.pokeRank = state.pokeRank.slice(-100);
+    if (familyRef) {
+      save();
+      return;
     }
-  }
-
-  function savePokeRank() {
     try {
       localStorage.setItem(POKE_RANK_KEY, JSON.stringify(state.pokeRank));
     } catch (_) {
       /* ignore */
     }
-  }
-
-  function addPokeRankEntry(entry) {
-    state.pokeRank.push(entry);
-    if (state.pokeRank.length > 100) state.pokeRank = state.pokeRank.slice(-100);
-    savePokeRank();
   }
 
   function getPokeRankBoard(limit = POKE_RANK_TOP) {
@@ -1998,7 +2049,6 @@
     if (state.tab === "stamps") renderStampBoard();
     if (state.tab === "talk") renderTalk();
     if (state.tab === "game") {
-      loadPokeRank();
       renderPokeGame();
       ensurePokeNamePool();
     }
@@ -2764,7 +2814,11 @@
   }
 
   initCloud().then(() => {
-    loadPokeRank();
+    if (!isFirebaseConfigured()) {
+      state.pokeRank = readLocalPokeRank();
+    } else if (migrateLocalPokeRankIfNeeded()) {
+      save();
+    }
     bind();
     ensureWeather();
     render();
