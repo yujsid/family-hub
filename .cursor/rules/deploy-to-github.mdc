@@ -1,0 +1,21 @@
+---
+description: Push all code changes to GitHub after every modification request
+alwaysApply: true
+---
+
+# Deploy to GitHub on Every Change
+
+When the user requests code changes in this project, **always commit and push to GitHub** in the same session — do not leave changes local-only.
+
+## Workflow (after completing edits)
+
+1. Run `node --check app.js` if `app.js` changed.
+2. Run `node scripts/sync-www.js` to sync the `www/` folder (Capacitor + GitHub Pages).
+3. Bump `sw.js` cache version (`family-hub-vN`) when static assets change.
+4. `git add` changed files, commit with a concise message, `git push origin HEAD`.
+
+## Notes
+
+- GitHub Pages serves from the repo root: https://yujsid.github.io/family-hub/
+- The user expects live site updates without a separate deploy step.
+- Only skip push if the user explicitly says not to, or if there are no file changes.
