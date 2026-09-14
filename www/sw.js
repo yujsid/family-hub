@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v13";
+const CACHE = "family-hub-v14";
 const ASSETS = [
   "./",
   "./index.html",
@@ -31,7 +31,9 @@ self.addEventListener("fetch", (event) => {
     url.hostname.includes("firebaseio.com") ||
     url.hostname.includes("firestore.googleapis.com") ||
     url.hostname.includes("apis.data.go.kr") ||
-    url.hostname.includes("open-meteo.com")
+    url.hostname.includes("open-meteo.com") ||
+    url.hostname.includes("pokeapi.co") ||
+    url.hostname.includes("raw.githubusercontent.com")
   ) {
     return;
   }

@@ -23,6 +23,9 @@
   const WEATHER_REGION_KEY = "family-hub-weather-region";
   const WEATHER_KEY_STORAGE = "family-hub-weather-service-key";
   const WEATHER_CACHE_KEY = "family-hub-weather-cache";
+  const POKE_SCORE_KEY = "family-hub-poke-score";
+  const POKE_STREAK_KEY = "family-hub-poke-streak";
+  const POKE_MAX_ID = 151; // 1세대
   const WEATHER_REGIONS = [
     { id: "seoul", label: "서울", nx: 60, ny: 127, lat: 37.5665, lon: 126.978 },
     { id: "suwon", label: "수원", nx: 60, ny: 121, lat: 37.2636, lon: 127.0286 },
@@ -53,6 +56,19 @@
     weatherByDate: {},
     weatherMeta: { source: "", label: "", error: "" },
     weatherLoading: false,
+    pokeGame: {
+      loading: false,
+      revealed: false,
+      id: null,
+      image: "",
+      nameKo: "",
+      nameEn: "",
+      message: "",
+      error: "",
+      hintUsed: false,
+    },
+    pokeScore: 0,
+    pokeStreak: 0,
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -1325,6 +1341,168 @@
     render();
   }
 
+  function loadPokeScores() {
+    try {
+      state.pokeScore = Number(localStorage.getItem(POKE_SCORE_KEY)) || 0;
+      state.pokeStreak = Number(localStorage.getItem(POKE_STREAK_KEY)) || 0;
+    } catch (_) {
+      state.pokeScore = 0;
+      state.pokeStreak = 0;
+    }
+  }
+
+  function savePokeScores() {
+    try {
+      localStorage.setItem(POKE_SCORE_KEY, String(state.pokeScore));
+      localStorage.setItem(POKE_STREAK_KEY, String(state.pokeStreak));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function normalizePokeGuess(s) {
+    return String(s || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[.\-_'’]/g, "");
+  }
+
+  function renderPokeGame() {
+    const root = $("#poke-game-root");
+    if (!root) return;
+    const g = state.pokeGame;
+    if (g.loading) {
+      root.innerHTML = `<div class="poke-card"><p class="hint">포켓몬을 불러오는 중…</p></div>`;
+      return;
+    }
+    if (g.error) {
+      root.innerHTML = `<div class="poke-card">
+        <p class="hint">${esc(g.error)}</p>
+        <button class="primary" type="button" id="poke-retry-btn">다시 불러오기</button>
+      </div>`;
+      return;
+    }
+    if (!g.id) {
+      root.innerHTML = `<div class="poke-card">
+        <p class="hint">시작 버튼을 눌러 게임을 시작하세요.</p>
+        <button class="primary" type="button" id="poke-start-btn">게임 시작</button>
+      </div>`;
+      return;
+    }
+    const revealedClass = g.revealed ? "is-revealed" : "is-silhouette";
+    root.innerHTML = `
+      <div class="poke-scorebar">
+        <span>점수 <strong>${state.pokeScore}</strong></span>
+        <span>연속 <strong>${state.pokeStreak}</strong></span>
+        <span>No.${g.id}</span>
+      </div>
+      <div class="poke-card">
+        <div class="poke-stage">
+          <img class="poke-sprite ${revealedClass}" src="${esc(g.image)}" alt="포켓몬" draggable="false" />
+        </div>
+        <p class="poke-prompt">${g.revealed ? `정답은 <strong>${esc(g.nameKo)}</strong> (${esc(g.nameEn)})!` : "이 포켓몬의 이름은?"}</p>
+        ${g.message ? `<p class="poke-message">${esc(g.message)}</p>` : ""}
+        ${
+          g.revealed
+            ? `<div class="poke-actions">
+                <button class="primary" type="button" id="poke-next-round">다음 포켓몬</button>
+              </div>`
+            : `<form id="poke-guess-form" class="poke-guess-form" action="#" method="post">
+                <input name="guess" id="poke-guess-input" maxlength="40" placeholder="이름 입력 (한글/영어)" autocomplete="off" required />
+                <button class="primary" type="submit">정답!</button>
+              </form>
+              <div class="poke-actions">
+                <button type="button" id="poke-hint-btn">힌트</button>
+                <button type="button" id="poke-reveal-btn">정답 보기</button>
+              </div>`
+        }
+      </div>`;
+    if (!g.revealed) {
+      const input = $("#poke-guess-input");
+      if (input) requestAnimationFrame(() => input.focus());
+    }
+  }
+
+  async function loadRandomPokemon() {
+    const g = state.pokeGame;
+    g.loading = true;
+    g.error = "";
+    g.message = "";
+    g.revealed = false;
+    g.hintUsed = false;
+    renderPokeGame();
+    const id = Math.floor(Math.random() * POKE_MAX_ID) + 1;
+    try {
+      const [pokeRes, speciesRes] = await Promise.all([
+        fetch(`https://pokeapi.co/api/v2/pokemon/${id}`),
+        fetch(`https://pokeapi.co/api/v2/pokemon-species/${id}`),
+      ]);
+      if (!pokeRes.ok || !speciesRes.ok) throw new Error("포켓몬 정보를 가져오지 못했어요.");
+      const poke = await pokeRes.json();
+      const species = await speciesRes.json();
+      const ko = (species.names || []).find((n) => n.language?.name === "ko");
+      const en = (species.names || []).find((n) => n.language?.name === "en");
+      const image =
+        poke.sprites?.other?.["official-artwork"]?.front_default ||
+        poke.sprites?.front_default ||
+        "";
+      if (!image) throw new Error("포켓몬 그림이 없어요. 다시 시도해 주세요.");
+      g.id = poke.id;
+      g.image = image;
+      g.nameKo = ko?.name || poke.name;
+      g.nameEn = en?.name || poke.name;
+      g.loading = false;
+      renderPokeGame();
+    } catch (err) {
+      g.loading = false;
+      g.id = null;
+      g.error = err.message || String(err);
+      renderPokeGame();
+    }
+  }
+
+  function checkPokeGuess(raw) {
+    const g = state.pokeGame;
+    if (!g.id || g.revealed) return;
+    const guess = normalizePokeGuess(raw);
+    if (!guess) return toast("이름을 입력해 주세요.");
+    const answers = [g.nameKo, g.nameEn].map(normalizePokeGuess);
+    if (answers.includes(guess)) {
+      g.revealed = true;
+      g.message = "정답이에요!";
+      state.pokeScore += 1;
+      state.pokeStreak += 1;
+      savePokeScores();
+      renderPokeGame();
+      toast(`정답! ${g.nameKo}`);
+      return;
+    }
+    state.pokeStreak = 0;
+    savePokeScores();
+    g.message = "틀렸어요. 다시 생각해 보세요!";
+    renderPokeGame();
+  }
+
+  function hintPoke() {
+    const g = state.pokeGame;
+    if (!g.id || g.revealed) return;
+    g.hintUsed = true;
+    const name = g.nameKo || g.nameEn;
+    g.message = `힌트: "${name[0]}" 으로 시작해요. (${name.length}글자)`;
+    renderPokeGame();
+  }
+
+  function revealPoke() {
+    const g = state.pokeGame;
+    if (!g.id || g.revealed) return;
+    g.revealed = true;
+    g.message = "아쉽네요. 다음 문제에 도전해 보세요!";
+    state.pokeStreak = 0;
+    savePokeScores();
+    renderPokeGame();
+  }
+
   function render() {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${state.tab}`));
@@ -1334,6 +1512,13 @@
     if (state.tab === "todos") renderTodos();
     if (state.tab === "stamps") renderStampBoard();
     if (state.tab === "talk") renderTalk();
+    if (state.tab === "game") {
+      loadPokeScores();
+      renderPokeGame();
+      if (!state.pokeGame.id && !state.pokeGame.loading && !state.pokeGame.error) {
+        loadRandomPokemon();
+      }
+    }
     if (state.tab === "settings") renderSettings();
   }
 
@@ -1715,6 +1900,7 @@
     $("#add-stamp-calendar-btn").addEventListener("click", () => stampForm());
     $("#add-stamp-btn").addEventListener("click", () => stampForm());
     $("#add-post-btn").addEventListener("click", () => postForm());
+    $("#poke-next-btn").addEventListener("click", () => loadRandomPokemon());
     $("#stamp-prev").addEventListener("click", () => {
       state.cursor.setMonth(state.cursor.getMonth() - 1);
       render();
@@ -1825,6 +2011,11 @@
         ensureWeather(true);
         toast("날씨를 다시 불러오는 중이에요.");
       }
+      if (e.target.id === "poke-start-btn" || e.target.id === "poke-retry-btn" || e.target.id === "poke-next-round") {
+        loadRandomPokemon();
+      }
+      if (e.target.id === "poke-hint-btn") hintPoke();
+      if (e.target.id === "poke-reveal-btn") revealPoke();
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
         if (form) saveCategoriesFromForm(form);
@@ -2034,7 +2225,7 @@
     document.addEventListener("submit", async (e) => {
       const formId = e.target && e.target.id;
       const isComment = e.target && e.target.classList && e.target.classList.contains("comment-form");
-      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form"].includes(formId) && !isComment) return;
+      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form", "poke-guess-form"].includes(formId) && !isComment) return;
       e.preventDefault();
       if (formId === "event-form") {
         saveEventFromForm(e.target);
@@ -2044,6 +2235,10 @@
       }
       if (formId === "post-form") {
         savePostFromForm(e.target);
+      }
+      if (formId === "poke-guess-form") {
+        const fd = new FormData(e.target);
+        checkPokeGuess(fd.get("guess"));
       }
       if (isComment) {
         saveCommentFromForm(e.target);
@@ -2066,6 +2261,7 @@
   }
 
   initCloud().then(() => {
+    loadPokeScores();
     bind();
     ensureWeather();
     render();
