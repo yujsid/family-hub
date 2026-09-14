@@ -35,6 +35,10 @@
     { id: "other", name: "기타" },
   ];
   const POKE_MAX_ID = 151; // 1세대
+  const TODO_PAST_DAYS = 2;
+  const TODO_FUTURE_DAYS = 5;
+  const TODO_MORE_STEP = 5;
+  const TODO_OVERDUE_SCAN_DAYS = 365;
   const WEATHER_REGIONS = [
     { id: "seoul", label: "서울", nx: 60, ny: 127, lat: 37.5665, lon: 126.978 },
     { id: "suwon", label: "수원", nx: 60, ny: 121, lat: 37.2636, lon: 127.0286 },
@@ -52,6 +56,7 @@
     cursor: startOfDay(new Date()),
     selected: startOfDay(new Date()),
     memberFilter: Object.fromEntries(MEMBERS.map((m) => [m.id, true])),
+    todoFutureExtra: 0,
     typeFilter: { schedule: true, todo: true, stamp: true },
     pinBuffer: "",
     pinResolve: null,
@@ -772,43 +777,115 @@
       <input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />
       <div class="item-body">
         <strong>${done ? "✓ " : "○ "}${esc(occ.title)}</strong>
-        <div class="meta">${esc(m.name)} · ${time}${isRecurring(ev) ? " · 반복" : ""}${overdue && !done ? " · 지남" : ""}</div>
+        <div class="meta">${esc(m.name)} · ${formatTodoDateLabel(d)} · ${time}${isRecurring(ev) ? " · 반복" : ""}${overdue && !done ? " · 지남" : ""}</div>
       </div>
       <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
     </div>`;
+  }
+
+  function formatTodoDateLabel(d) {
+    const today = startOfDay(new Date());
+    if (sameDay(d, today)) return "오늘";
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    return `${y !== today.getFullYear() ? `${y}년 ` : ""}${m}월 ${day}일 (${WEEKDAYS[d.getDay()]})`;
+  }
+
+  function todoRangeLabel(start, end) {
+    const sy = start.getFullYear();
+    const ey = end.getFullYear();
+    const sm = start.getMonth() + 1;
+    const em = end.getMonth() + 1;
+    const sd = start.getDate();
+    const ed = end.getDate();
+    if (sy === ey && sm === em) return `${sm}월 ${sd}일 ~ ${ed}일`;
+    if (sy === ey) return `${sy}년 ${sm}월 ${sd}일 ~ ${em}월 ${ed}일`;
+    return `${sy}.${sm}.${sd} ~ ${ey}.${em}.${ed}`;
+  }
+
+  function getTodoVisibleRange() {
+    const today = startOfDay(new Date());
+    const extra = state.todoFutureExtra || 0;
+    return {
+      today,
+      start: addDays(today, -TODO_PAST_DAYS),
+      end: addDays(today, TODO_FUTURE_DAYS + extra),
+    };
+  }
+
+  function overdueTodoItems() {
+    const today = startOfDay(new Date());
+    let scanEnd = addDays(today, -TODO_OVERDUE_SCAN_DAYS);
+    state.events.forEach((ev) => {
+      if (ev.kind !== "todo") return;
+      const start = parseYmd(ev.date);
+      if (start < today && start > scanEnd) scanEnd = start;
+    });
+    const items = [];
+    for (let d = addDays(today, -1); d >= scanEnd; d = addDays(d, -1)) {
+      todosOn(d).forEach((ev) => {
+        if (!isTodoDone(ev, d)) items.push({ ev, d });
+      });
+    }
+    return items.sort(
+      (a, b) => a.d - b.d || (a.ev.startTime || "").localeCompare(b.ev.startTime || "")
+    );
+  }
+
+  function todoDaySectionHtml(d, { hideIncompletePast = false } = {}) {
+    const today = startOfDay(new Date());
+    let list = todosOn(d);
+    if (hideIncompletePast && d < today) {
+      list = list.filter((ev) => isTodoDone(ev, d));
+    }
+    if (!list.length) return "";
+    const isPast = d < today;
+    const isToday = sameDay(d, today);
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    return `<section class="todo-day${isPast ? " is-past" : ""}${isToday ? " is-today" : ""}" data-date="${ymd(d)}">
+      <h3 class="todo-day-title">
+        ${month}월 ${day}일 (${WEEKDAYS[d.getDay()]})
+        ${isToday ? '<span class="todo-badge">오늘</span>' : ""}
+        ${isPast ? '<span class="todo-badge is-past">지난 날</span>' : ""}
+      </h3>
+      <div class="day-list">${list.map((ev) => todoRowHtml(ev, d, { overdue: isPast })).join("")}</div>
+    </section>`;
   }
 
   function renderTodos() {
     const title = $("#todo-month-title");
     const root = $("#todo-list-root");
     if (!title || !root) return;
-    const cursor = state.cursor;
-    const year = cursor.getFullYear();
-    const month = cursor.getMonth();
-    title.textContent = monthLabel(cursor);
-    const today = startOfDay(new Date());
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const sections = [];
+    const { today, start, end } = getTodoVisibleRange();
+    title.textContent = todoRangeLabel(start, end);
+    const parts = [];
+    const overdue = overdueTodoItems();
 
-    for (let day = 1; day <= daysInMonth; day++) {
-      const d = startOfDay(new Date(year, month, day));
-      const list = todosOn(d);
-      if (!list.length) continue;
-      const isPast = d < today;
-      const isToday = sameDay(d, today);
-      sections.push(`<section class="todo-day${isPast ? " is-past" : ""}${isToday ? " is-today" : ""}" data-date="${ymd(d)}">
-        <h3 class="todo-day-title">
-          ${month + 1}월 ${day}일 (${WEEKDAYS[d.getDay()]})
-          ${isToday ? '<span class="todo-badge">오늘</span>' : ""}
-          ${isPast ? '<span class="todo-badge is-past">지난 날</span>' : ""}
-        </h3>
-        <div class="day-list">${list.map((ev) => todoRowHtml(ev, d, { overdue: isPast })).join("")}</div>
+    if (overdue.length) {
+      parts.push(`<section class="todo-overdue-block">
+        <h3 class="todo-section-title">지난 할일 <span class="todo-badge is-past">미완료 ${overdue.length}</span></h3>
+        <div class="day-list">${overdue.map(({ ev, d }) => todoRowHtml(ev, d, { overdue: true })).join("")}</div>
       </section>`);
     }
 
-    root.innerHTML = sections.length
-      ? sections.join("")
-      : emptyState("이달에 할 일이 없어요. 위에서 추가해 보세요.");
+    const daySections = [];
+    for (let d = start; d <= end; d = addDays(d, 1)) {
+      const html = todoDaySectionHtml(d, { hideIncompletePast: true });
+      if (html) daySections.push(html);
+    }
+    parts.push(...daySections);
+
+    if (!overdue.length && !daySections.length) {
+      parts.push(emptyState("표시할 할 일이 없어요. 위에서 추가해 보세요."));
+    }
+
+    parts.push(`<div class="todo-more-wrap">
+      <button type="button" id="todo-show-more" class="ghost">더 보기 (+${TODO_MORE_STEP}일)</button>
+    </div>`);
+
+    root.innerHTML = parts.join("");
   }
 
   function weatherIcon(sky, pty) {
@@ -2215,18 +2292,17 @@
       state.cursor.setMonth(state.cursor.getMonth() + 1);
       render();
     });
-    $("#todo-prev").addEventListener("click", () => {
-      state.cursor.setMonth(state.cursor.getMonth() - 1);
-      render();
-    });
-    $("#todo-next").addEventListener("click", () => {
-      state.cursor.setMonth(state.cursor.getMonth() + 1);
-      render();
-    });
     $("#todo-today-btn").addEventListener("click", () => {
       state.cursor = startOfDay(new Date());
       state.selected = state.cursor;
+      state.todoFutureExtra = 0;
       render();
+    });
+    document.body.addEventListener("click", (e) => {
+      if (e.target.id === "todo-show-more") {
+        state.todoFutureExtra = (state.todoFutureExtra || 0) + TODO_MORE_STEP;
+        render();
+      }
     });
 
     $("#type-filters").addEventListener("change", (e) => {

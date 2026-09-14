@@ -67,14 +67,12 @@
     <section id="view-todos" class="view">
       <div class="toolbar">
         <div class="month-nav">
-          <button id="todo-prev" type="button" aria-label="이전 달">‹</button>
           <h2 id="todo-month-title"></h2>
-          <button id="todo-next" type="button" aria-label="다음 달">›</button>
           <button id="todo-today-btn" class="ghost" type="button">오늘</button>
         </div>
         <button id="add-todo-list-btn" class="primary" type="button">할 일 추가</button>
       </div>
-      <p class="hint">날짜별 할 일 목록입니다. 오늘보다 지난 미완료 할 일은 빨간색으로 표시됩니다.</p>
+      <p class="hint">지난 미완료 할 일은 상단에 모아 보여줍니다. 기본은 2일 전~5일 후, 더 보기로 이후 일정을 확인할 수 있어요.</p>
       <div class="filters-bar">
         <div class="member-filters" data-member-filters></div>
       </div>
