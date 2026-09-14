@@ -18,6 +18,11 @@
   const DEFAULT_RATES = { tidy: 500, errand: 500, clean: 500, recycle: 500, laundry: 500, etc: 300 };
 
   const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+  const MEAL_SLOTS = [
+    { id: "breakfast", label: "아침", emoji: "🌅" },
+    { id: "lunch", label: "점심", emoji: "☀️" },
+    { id: "dinner", label: "저녁", emoji: "🌙" },
+  ];
   const DEFAULT_DOC = "families/yu-family";
   const PREFERRED_MEMBER_KEY = "family-hub-preferred-member";
   const WEATHER_REGION_KEY = "family-hub-weather-region";
@@ -63,6 +68,7 @@
     events: [],
     stamps: [],
     posts: [],
+    meals: {},
     pin: "1234",
     categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
     rates: { ...DEFAULT_RATES },
@@ -166,8 +172,57 @@
       categories: state.categories,
       rates: state.rates,
       todoRate: state.todoRate,
+      meals: state.meals,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
+  }
+
+  function normalizeMeals(raw) {
+    if (!raw || typeof raw !== "object") return {};
+    const out = {};
+    Object.keys(raw).forEach((key) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+      const row = raw[key] || {};
+      const entry = {};
+      MEAL_SLOTS.forEach((slot) => {
+        const val = String(row[slot.id] || "").trim();
+        if (val) entry[slot.id] = val;
+      });
+      if (Object.keys(entry).length) out[key] = entry;
+    });
+    return out;
+  }
+
+  function getMealsForDate(date) {
+    const row = state.meals[ymd(date)] || {};
+    return Object.fromEntries(MEAL_SLOTS.map((slot) => [slot.id, String(row[slot.id] || "").trim()]));
+  }
+
+  function fillMealForm(date) {
+    const form = document.getElementById("meal-form");
+    if (!form) return;
+    const d = startOfDay(date || new Date());
+    form.querySelector('[name="date"]').value = ymd(d);
+    const meals = getMealsForDate(d);
+    MEAL_SLOTS.forEach((slot) => {
+      const input = form.querySelector(`[name="${slot.id}"]`);
+      if (input) input.value = meals[slot.id] || "";
+    });
+  }
+
+  function saveMealsFromForm(form) {
+    const dateStr = String(form.querySelector('[name="date"]')?.value || "").trim();
+    if (!dateStr) return toast("날짜를 선택해 주세요.");
+    const entry = {};
+    MEAL_SLOTS.forEach((slot) => {
+      const val = String(form.querySelector(`[name="${slot.id}"]`)?.value || "").trim();
+      if (val) entry[slot.id] = val;
+    });
+    if (Object.keys(entry).length) state.meals[dateStr] = entry;
+    else delete state.meals[dateStr];
+    save();
+    toast("식단을 저장했습니다.");
+    render();
   }
 
   function normalizeCategories(list) {
@@ -196,6 +251,7 @@
     });
     const todoRate = Number(data.todoRate);
     state.todoRate = Number.isFinite(todoRate) && todoRate >= 0 ? todoRate : 500;
+    state.meals = normalizeMeals(data.meals);
     render();
     state.applyingRemote = false;
   }
@@ -733,6 +789,24 @@
     return `${rows}${stampRows}`;
   }
 
+  function mealPlanModalHtml(d) {
+    const meals = getMealsForDate(d);
+    const rows = MEAL_SLOTS.map((slot) => {
+      const menu = meals[slot.id] || "";
+      return `<div class="meal-row${menu ? "" : " is-empty"}">
+        <span class="meal-slot">${slot.emoji} ${slot.label}</span>
+        <span class="meal-menu">${menu ? esc(menu) : "—"}</span>
+      </div>`;
+    }).join("");
+    return `<section class="meal-plan-block">
+      <div class="meal-plan-head">
+        <h4>식단표</h4>
+        <button type="button" class="ghost tiny" id="goto-meal-settings">설정에서 입력</button>
+      </div>
+      <div class="meal-list">${rows}</div>
+    </section>`;
+  }
+
   function openDayDetailModal(date) {
     const d = startOfDay(date);
     state.selected = d;
@@ -744,6 +818,7 @@
       <div class="day-modal">
         <h3>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})</h3>
         ${weatherLine}
+        ${mealPlanModalHtml(d)}
         <div class="panel-actions">
           <button type="button" id="panel-add-event">일정</button>
           <button type="button" id="panel-add-todo">할 일</button>
@@ -1399,6 +1474,21 @@
         <button type="button" id="add-category">항목 추가</button>
         <button class="primary" type="button" id="save-rates">항목·금액 저장</button>
       </div>`;
+    const mealFields = MEAL_SLOTS.map(
+      (slot) => `<label>${slot.emoji} ${slot.label}
+        <input name="${slot.id}" maxlength="40" placeholder="${slot.label} 메뉴" />
+      </label>`
+    ).join("");
+    const mealForm = document.getElementById("meal-form");
+    if (mealForm) {
+      mealForm.innerHTML = `
+        <label>날짜
+          <input type="date" name="date" required />
+        </label>
+        ${mealFields}
+        <button class="primary" type="button" id="save-meals">식단 저장</button>`;
+      fillMealForm(state.selected);
+    }
     updateCloudStatus();
   }
 
@@ -2314,9 +2404,14 @@
 
     document.body.addEventListener("change", (e) => {
       const id = e.target.dataset.member;
-      if (!id) return;
-      state.memberFilter[id] = e.target.checked;
-      render();
+      if (id) {
+        state.memberFilter[id] = e.target.checked;
+        render();
+        return;
+      }
+      if (e.target.closest("#meal-form")?.querySelector('[name="date"]') === e.target) {
+        fillMealForm(parseYmd(e.target.value));
+      }
     });
 
     document.body.addEventListener("click", async (e) => {
@@ -2332,6 +2427,17 @@
       if (e.target.id === "panel-add-event") eventForm(null, "schedule");
       if (e.target.id === "panel-add-todo") eventForm(null, "todo");
       if (e.target.id === "panel-add-stamp") stampForm();
+      if (e.target.id === "goto-meal-settings") {
+        closeModal();
+        state.tab = "settings";
+        render();
+        fillMealForm(state.selected);
+        document.getElementById("meal-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (e.target.id === "save-meals") {
+        const form = document.getElementById("meal-form");
+        if (form) saveMealsFromForm(form);
+      }
       if (e.target.id === "save-event") {
         const form = document.getElementById("event-form");
         if (form) saveEventFromForm(form);

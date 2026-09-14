@@ -498,6 +498,56 @@ button.primary {
   align-items: start;
   grid-template-columns: 1fr;
 }
+.meal-plan-block {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--gold) 8%, var(--paper));
+}
+.meal-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.meal-plan-head h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+.meal-list {
+  display: grid;
+  gap: 8px;
+}
+.meal-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+.meal-row.is-empty .meal-menu {
+  color: var(--muted);
+}
+.meal-slot {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.meal-menu {
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.meal-edit-form label {
+  text-align: left;
+}
 .day-modal .panel-actions {
   margin: 8px 0 4px;
 }
