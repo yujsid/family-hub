@@ -1,9 +1,9 @@
 (() => {
   const MEMBERS = [
-    { id: "jaesang", name: "유재상", role: "아빠", color: "#3d5a80" },
-    { id: "sinjeong", name: "윤신정", role: "엄마", color: "#d76a4f" },
-    { id: "sua", name: "유수아", role: "딸", color: "#5e8f74" },
-    { id: "sumin", name: "유수민", role: "아들", color: "#d4a017" },
+    { id: "jaesang", name: "유재상", shortName: "재상", role: "아빠", color: "#3d5a80" },
+    { id: "sinjeong", name: "윤신정", shortName: "신정", role: "엄마", color: "#d76a4f" },
+    { id: "sua", name: "유수아", shortName: "수아", role: "딸", color: "#5e8f74" },
+    { id: "sumin", name: "유수민", shortName: "수민", role: "아들", color: "#d4a017" },
   ];
   const ALLOWANCE_MEMBERS = MEMBERS.filter((m) => m.role === "딸" || m.role === "아들");
 
@@ -775,7 +775,7 @@
   function renderTypeFilters() {
     const types = [
       { id: "schedule", label: "일정", icon: "📅" },
-      { id: "todo", label: "할 일", icon: "☑" },
+      { id: "todo", label: "할일", icon: "☑" },
       { id: "stamp", label: "용돈", icon: "💮" },
     ];
     const el = $("#type-filters");
@@ -802,7 +802,7 @@
       <label class="chip">
         <span class="dot" style="background:${m.color}"></span>
         <input type="checkbox" data-member="${m.id}" ${state.memberFilter[m.id] ? "checked" : ""} />
-        ${m.name}<span class="chip-role"> (${m.role})</span>
+        <span class="chip-name-full">${m.name}</span><span class="chip-name-short">${m.shortName || m.name}</span><span class="chip-role"> (${m.role})</span>
       </label>`
       ).join("");
     document.querySelectorAll("[data-member-filters]").forEach((el) => {
