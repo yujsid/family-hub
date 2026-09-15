@@ -127,6 +127,7 @@
   let db = null;
   let pokeTimerId = null;
   let pokeAdvanceTimeout = null;
+  let schoolLunchPromise = null;
   let familyRef = null;
   let saveTimer = null;
 
@@ -382,6 +383,24 @@
   async function fetchSchoolLunches(fromDate, toDate) {
     const cfg = getSchoolMealConfig();
     if (!cfg.enabled) return {};
+    const from = startOfDay(fromDate);
+    const to = startOfDay(toDate);
+    if (to < from) return {};
+
+    // Without a NEIS KEY the portal returns only 5 sample rows per request.
+    // Fetch in small windows (and single days) so each day can still be filled.
+    const stepDays = cfg.key ? 30 : 5;
+    const byDate = {};
+    for (let cursor = from; cursor <= to; cursor = addDays(cursor, stepDays)) {
+      const windowEnd = addDays(cursor, stepDays - 1);
+      const end = windowEnd < to ? windowEnd : to;
+      const chunk = await fetchSchoolLunchWindow(cursor, end, cfg);
+      Object.assign(byDate, chunk);
+    }
+    return byDate;
+  }
+
+  async function fetchSchoolLunchWindow(fromDate, toDate, cfg = getSchoolMealConfig()) {
     const from = ymdToNeis(ymd(fromDate));
     const to = ymdToNeis(ymd(toDate));
     const params = new URLSearchParams({
@@ -419,6 +438,30 @@
     return byDate;
   }
 
+  async function fetchSchoolLunchForDate(date) {
+    const cfg = getSchoolMealConfig();
+    if (!cfg.enabled) return "";
+    const day = startOfDay(date);
+    const key = ymd(day);
+    if (state.schoolLunches[key]) return state.schoolLunches[key];
+    const chunk = await fetchSchoolLunchWindow(day, day, cfg);
+    if (chunk[key]) {
+      state.schoolLunches[key] = chunk[key];
+      saveSchoolLunchCache(state.schoolLunches, {
+        school: cfg.name,
+        range: state.schoolLunchMeta.range || key,
+      });
+    }
+    return chunk[key] || "";
+  }
+
+  function refreshOpenMealModal() {
+    const modal = document.querySelector(".day-modal");
+    if (!modal) return;
+    const block = document.querySelector(".meal-plan-block");
+    if (block) block.outerHTML = mealPlanModalHtml(state.selected);
+  }
+
   async function ensureSchoolLunches(centerDate = state.cursor, force = false) {
     const cfg = getSchoolMealConfig();
     if (!cfg.enabled) return;
@@ -426,6 +469,7 @@
     const from = addDays(center, -14);
     const to = addDays(center, 21);
     const range = `${ymd(from)}~${ymd(to)}`;
+    const centerKey = ymd(center);
 
     if (!force) {
       const cached = loadSchoolLunchCache();
@@ -435,33 +479,44 @@
           loading: false,
           error: "",
           school: cached.school || cfg.name,
-          range: cached.range || range,
+          range: cached.range || "",
         };
-        if (cached.range === range) return;
       }
-      if (state.schoolLunchMeta.loading) return;
-      if (state.schoolLunchMeta.range === range && Object.keys(state.schoolLunches).length) return;
+      if (state.schoolLunches[centerKey] && state.schoolLunchMeta.range === range) return;
+      if (schoolLunchPromise) {
+        await schoolLunchPromise;
+        if (state.schoolLunches[centerKey] && state.schoolLunchMeta.range === range) return;
+      }
     }
 
     state.schoolLunchMeta = { ...state.schoolLunchMeta, loading: true, error: "", school: cfg.name };
-    try {
-      const byDate = await fetchSchoolLunches(from, to);
-      state.schoolLunches = { ...state.schoolLunches, ...byDate };
-      state.schoolLunchMeta = {
-        loading: false,
-        error: "",
-        school: cfg.name,
-        range,
-      };
-      saveSchoolLunchCache(state.schoolLunches, state.schoolLunchMeta);
-    } catch (err) {
-      state.schoolLunchMeta = {
-        loading: false,
-        error: err.message || String(err),
-        school: cfg.name,
-        range: state.schoolLunchMeta.range || "",
-      };
-    }
+    schoolLunchPromise = (async () => {
+      try {
+        // Guarantee the focused day even when sample key limits range results.
+        await fetchSchoolLunchForDate(center);
+        const byDate = await fetchSchoolLunches(from, to);
+        state.schoolLunches = { ...state.schoolLunches, ...byDate };
+        state.schoolLunchMeta = {
+          loading: false,
+          error: "",
+          school: cfg.name,
+          range,
+        };
+        saveSchoolLunchCache(state.schoolLunches, state.schoolLunchMeta);
+        refreshOpenMealModal();
+      } catch (err) {
+        state.schoolLunchMeta = {
+          loading: false,
+          error: err.message || String(err),
+          school: cfg.name,
+          range: state.schoolLunchMeta.range || "",
+        };
+        refreshOpenMealModal();
+      } finally {
+        schoolLunchPromise = null;
+      }
+    })();
+    await schoolLunchPromise;
   }
 
   function normalizeCategories(list) {
@@ -1093,8 +1148,7 @@
     `);
     await ensureSchoolLunches(d);
     if (document.querySelector(".day-modal") && sameDay(state.selected, d)) {
-      const block = document.querySelector(".meal-plan-block");
-      if (block) block.outerHTML = mealPlanModalHtml(d);
+      refreshOpenMealModal();
     }
   }
 
@@ -1751,7 +1805,9 @@
     if (mealForm) {
       const cfg = getSchoolMealConfig();
       mealForm.innerHTML = `
-        <p class="hint">점심은 <strong>${esc(cfg.name)}</strong> 나이스 급식 API를 기본으로 불러옵니다. 직접 입력하면 그 값이 우선합니다.</p>
+        <p class="hint">점심은 <strong>${esc(cfg.name)}</strong> 나이스 급식 API를 기본으로 불러옵니다. 직접 입력하면 그 값이 우선합니다.${
+          cfg.key ? "" : " (현재 인증키 없음: 날짜별로 불러오도록 처리해 두었어요.)"
+        }</p>
         <label>날짜
           <input type="date" name="date" required />
         </label>

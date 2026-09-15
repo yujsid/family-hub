@@ -23,7 +23,7 @@ window.FAMILY_HUB_SCHOOL_MEAL = {
   name: "서울신서초등학교",
   atptOfcdcScCode: "B10", // 서울특별시교육청
   sdSchulCode: "7081454",
-  key: "", // 선택: NEIS 인증키 (없어도 조회 가능)
+  key: "", // 선택: https://open.neis.go.kr 에서 발급 (없으면 날짜별 조회)
 };
 
 // 가족 데이터 문서 경로 (같은 값을 쓰는 기기끼리 데이터를 공유합니다)
