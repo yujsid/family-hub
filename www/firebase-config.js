@@ -16,5 +16,15 @@ window.FAMILY_HUB_WEATHER = {
   regionId: "seoul",
 };
 
+// 학교 급식 (나이스 교육정보 개방 포털). 기본: 서울신서초등학교
+// https://open.neis.go.kr/
+window.FAMILY_HUB_SCHOOL_MEAL = {
+  enabled: true,
+  name: "서울신서초등학교",
+  atptOfcdcScCode: "B10", // 서울특별시교육청
+  sdSchulCode: "7081454",
+  key: "", // 선택: NEIS 인증키 (없어도 조회 가능)
+};
+
 // 가족 데이터 문서 경로 (같은 값을 쓰는 기기끼리 데이터를 공유합니다)
 window.FAMILY_HUB_DOC = "families/yu-family";

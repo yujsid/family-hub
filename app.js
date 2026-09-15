@@ -23,6 +23,14 @@
     { id: "lunch", label: "점심", emoji: "☀️" },
     { id: "dinner", label: "저녁", emoji: "🌙" },
   ];
+  const SCHOOL_MEAL_DEFAULT = {
+    enabled: true,
+    name: "서울신서초등학교",
+    atptOfcdcScCode: "B10",
+    sdSchulCode: "7081454",
+    key: "",
+  };
+  const SCHOOL_LUNCH_CACHE_KEY = "family-hub-school-lunch-cache";
   const DEFAULT_DOC = "families/yu-family";
   const PREFERRED_MEMBER_KEY = "family-hub-preferred-member";
   const WEATHER_REGION_KEY = "family-hub-weather-region";
@@ -73,6 +81,8 @@
     stamps: [],
     posts: [],
     meals: {},
+    schoolLunches: {},
+    schoolLunchMeta: { loading: false, error: "", school: "", range: "" },
     pin: "1234",
     categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
     rates: { ...DEFAULT_RATES },
@@ -250,8 +260,18 @@
   }
 
   function getMealsForDate(date) {
-    const row = state.meals[ymd(date)] || {};
-    return Object.fromEntries(MEAL_SLOTS.map((slot) => [slot.id, String(row[slot.id] || "").trim()]));
+    const key = ymd(date);
+    const row = state.meals[key] || {};
+    const breakfast = String(row.breakfast || "").trim();
+    const manualLunch = String(row.lunch || "").trim();
+    const schoolLunch = String(state.schoolLunches[key] || "").trim();
+    const dinner = String(row.dinner || "").trim();
+    return {
+      breakfast,
+      lunch: manualLunch || schoolLunch,
+      dinner,
+      lunchSource: manualLunch ? "manual" : schoolLunch ? "school" : "",
+    };
   }
 
   function fillMealForm(date) {
@@ -262,8 +282,23 @@
     const meals = getMealsForDate(d);
     MEAL_SLOTS.forEach((slot) => {
       const input = form.querySelector(`[name="${slot.id}"]`);
-      if (input) input.value = meals[slot.id] || "";
+      if (!input) return;
+      const manual = String((state.meals[ymd(d)] || {})[slot.id] || "").trim();
+      input.value = manual;
+      if (slot.id === "lunch") {
+        input.placeholder = meals.lunchSource === "school" ? meals.lunch : "점심 메뉴 (비우면 신서초 급식 사용)";
+      }
     });
+    const hint = document.getElementById("meal-school-hint");
+    if (hint) {
+      if (meals.lunchSource === "school") {
+        hint.textContent = `이 날짜 점심은 신서초 급식으로 표시됩니다: ${meals.lunch}`;
+      } else if (meals.lunchSource === "manual") {
+        hint.textContent = "이 날짜 점심은 직접 입력한 메뉴가 우선 적용됩니다.";
+      } else {
+        hint.textContent = "해당 날짜 급식이 없거나 아직 불러오지 않았어요.";
+      }
+    }
   }
 
   function saveMealsFromForm(form) {
@@ -279,6 +314,153 @@
     save();
     toast("식단을 저장했습니다.");
     render();
+  }
+
+  function getSchoolMealConfig() {
+    const cfg = window.FAMILY_HUB_SCHOOL_MEAL || {};
+    return {
+      ...SCHOOL_MEAL_DEFAULT,
+      ...cfg,
+      enabled: cfg.enabled !== false,
+    };
+  }
+
+  function ymdToNeis(dateStr) {
+    return String(dateStr || "").replace(/-/g, "");
+  }
+
+  function neisToYmd(neisYmd) {
+    const s = String(neisYmd || "");
+    if (s.length !== 8) return "";
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  }
+
+  function formatSchoolDishName(raw) {
+    return String(raw || "")
+      .split(/<br\s*\/?>/i)
+      .map((part) =>
+        part
+          .replace(/\([^)]*\)/g, "")
+          .replace(/\*/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+      )
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  function loadSchoolLunchCache() {
+    try {
+      const raw = localStorage.getItem(SCHOOL_LUNCH_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      if (Date.now() - (parsed.savedAt || 0) > 12 * 60 * 60 * 1000) return null;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveSchoolLunchCache(byDate, meta) {
+    try {
+      localStorage.setItem(
+        SCHOOL_LUNCH_CACHE_KEY,
+        JSON.stringify({
+          savedAt: Date.now(),
+          byDate,
+          school: meta.school || "",
+          range: meta.range || "",
+        })
+      );
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  async function fetchSchoolLunches(fromDate, toDate) {
+    const cfg = getSchoolMealConfig();
+    if (!cfg.enabled) return {};
+    const from = ymdToNeis(ymd(fromDate));
+    const to = ymdToNeis(ymd(toDate));
+    const params = new URLSearchParams({
+      Type: "json",
+      pIndex: "1",
+      pSize: "100",
+      ATPT_OFCDC_SC_CODE: cfg.atptOfcdcScCode,
+      SD_SCHUL_CODE: cfg.sdSchulCode,
+      MMEAL_SC_CODE: "2",
+      MLSV_FROM_YMD: from,
+      MLSV_TO_YMD: to,
+    });
+    if (cfg.key) params.set("KEY", cfg.key);
+    const res = await fetch(`https://open.neis.go.kr/hub/mealServiceDietInfo?${params}`);
+    if (!res.ok) throw new Error(`급식 API 오류 (${res.status})`);
+    const data = await res.json();
+    const block = data.mealServiceDietInfo;
+    if (!Array.isArray(block)) {
+      const code = data.RESULT?.CODE || "";
+      if (code === "INFO-200") return {};
+      throw new Error(data.RESULT?.MESSAGE || "급식 정보를 가져오지 못했어요.");
+    }
+    const result = block[0]?.head?.find((h) => h.RESULT)?.RESULT;
+    if (result?.CODE && result.CODE !== "INFO-000") {
+      if (result.CODE === "INFO-200") return {};
+      throw new Error(result.MESSAGE || "급식 정보를 가져오지 못했어요.");
+    }
+    const rows = block[1]?.row || [];
+    const byDate = {};
+    rows.forEach((row) => {
+      const key = neisToYmd(row.MLSV_YMD);
+      const menu = formatSchoolDishName(row.DDISH_NM);
+      if (key && menu) byDate[key] = menu;
+    });
+    return byDate;
+  }
+
+  async function ensureSchoolLunches(centerDate = state.cursor, force = false) {
+    const cfg = getSchoolMealConfig();
+    if (!cfg.enabled) return;
+    const center = startOfDay(centerDate || new Date());
+    const from = addDays(center, -14);
+    const to = addDays(center, 21);
+    const range = `${ymd(from)}~${ymd(to)}`;
+
+    if (!force) {
+      const cached = loadSchoolLunchCache();
+      if (cached?.byDate && Object.keys(cached.byDate).length) {
+        state.schoolLunches = { ...state.schoolLunches, ...cached.byDate };
+        state.schoolLunchMeta = {
+          loading: false,
+          error: "",
+          school: cached.school || cfg.name,
+          range: cached.range || range,
+        };
+        if (cached.range === range) return;
+      }
+      if (state.schoolLunchMeta.loading) return;
+      if (state.schoolLunchMeta.range === range && Object.keys(state.schoolLunches).length) return;
+    }
+
+    state.schoolLunchMeta = { ...state.schoolLunchMeta, loading: true, error: "", school: cfg.name };
+    try {
+      const byDate = await fetchSchoolLunches(from, to);
+      state.schoolLunches = { ...state.schoolLunches, ...byDate };
+      state.schoolLunchMeta = {
+        loading: false,
+        error: "",
+        school: cfg.name,
+        range,
+      };
+      saveSchoolLunchCache(state.schoolLunches, state.schoolLunchMeta);
+    } catch (err) {
+      state.schoolLunchMeta = {
+        loading: false,
+        error: err.message || String(err),
+        school: cfg.name,
+        range: state.schoolLunchMeta.range || "",
+      };
+    }
   }
 
   function normalizeCategories(list) {
@@ -850,11 +1032,16 @@
 
   function mealPlanModalHtml(d) {
     const meals = getMealsForDate(d);
+    const cfg = getSchoolMealConfig();
     const rows = MEAL_SLOTS.map((slot) => {
       const menu = meals[slot.id] || "";
+      const isSchoolLunch = slot.id === "lunch" && meals.lunchSource === "school";
       return `<div class="meal-row${menu ? "" : " is-empty"}">
         <span class="meal-slot">${slot.emoji} ${slot.label}</span>
-        <span class="meal-menu">${menu ? esc(menu) : "—"}</span>
+        <span class="meal-menu">
+          ${menu ? esc(menu) : "—"}
+          ${isSchoolLunch ? `<small class="meal-source">${esc(cfg.name)} 급식</small>` : ""}
+        </span>
       </div>`;
     }).join("");
     return `<section class="meal-plan-block">
@@ -863,10 +1050,17 @@
         <button type="button" class="ghost tiny" id="goto-meal-settings">설정에서 입력</button>
       </div>
       <div class="meal-list">${rows}</div>
+      ${
+        state.schoolLunchMeta.loading
+          ? `<p class="hint meal-school-status">신서초 급식을 불러오는 중…</p>`
+          : state.schoolLunchMeta.error
+            ? `<p class="hint meal-school-status">급식 불러오기 실패: ${esc(state.schoolLunchMeta.error)}</p>`
+            : ""
+      }
     </section>`;
   }
 
-  function openDayDetailModal(date) {
+  async function openDayDetailModal(date) {
     const d = startOfDay(date);
     state.selected = d;
     const w = state.weatherByDate[ymd(d)];
@@ -893,6 +1087,11 @@
         <div class="modal-actions"><button type="button" id="cancel-modal">닫기</button></div>
       </div>
     `);
+    await ensureSchoolLunches(d);
+    if (document.querySelector(".day-modal") && sameDay(state.selected, d)) {
+      const block = document.querySelector(".meal-plan-block");
+      if (block) block.outerHTML = mealPlanModalHtml(d);
+    }
   }
 
   function todosOn(date) {
@@ -1304,6 +1503,7 @@
     if (state.calView === "day") body = renderDay();
     root.innerHTML = `${weatherBannerHtml()}${body}`;
     ensureWeather();
+    ensureSchoolLunches(state.cursor);
   }
 
   function stampsInMonth(memberId, year, month) {
@@ -1533,19 +1733,30 @@
         <button type="button" id="add-category">항목 추가</button>
         <button class="primary" type="button" id="save-rates">항목·금액 저장</button>
       </div>`;
-    const mealFields = MEAL_SLOTS.map(
-      (slot) => `<label>${slot.emoji} ${slot.label}
+    const mealFields = MEAL_SLOTS.map((slot) => {
+      if (slot.id === "lunch") {
+        return `<label>${slot.emoji} ${slot.label}
+          <textarea name="${slot.id}" rows="2" maxlength="200" placeholder="비우면 신서초 급식을 사용합니다"></textarea>
+        </label>`;
+      }
+      return `<label>${slot.emoji} ${slot.label}
         <input name="${slot.id}" maxlength="40" placeholder="${slot.label} 메뉴" />
-      </label>`
-    ).join("");
+      </label>`;
+    }).join("");
     const mealForm = document.getElementById("meal-form");
     if (mealForm) {
+      const cfg = getSchoolMealConfig();
       mealForm.innerHTML = `
+        <p class="hint">점심은 <strong>${esc(cfg.name)}</strong> 나이스 급식 API를 기본으로 불러옵니다. 직접 입력하면 그 값이 우선합니다.</p>
         <label>날짜
           <input type="date" name="date" required />
         </label>
         ${mealFields}
-        <button class="primary" type="button" id="save-meals">식단 저장</button>`;
+        <p class="hint" id="meal-school-hint"></p>
+        <div class="meal-edit-actions">
+          <button class="primary" type="button" id="save-meals">식단 저장</button>
+          <button type="button" id="refresh-school-lunch">급식 다시 불러오기</button>
+        </div>`;
       fillMealForm(state.selected);
     }
     updateCloudStatus();
@@ -2516,6 +2727,13 @@
         const form = document.getElementById("meal-form");
         if (form) saveMealsFromForm(form);
       }
+      if (e.target.id === "refresh-school-lunch") {
+        await ensureSchoolLunches(state.selected || state.cursor, true);
+        fillMealForm(state.selected || new Date());
+        if (state.schoolLunchMeta.error) toast(state.schoolLunchMeta.error);
+        else toast("신서초 급식을 불러왔어요.");
+        if (state.tab === "settings") renderSettings();
+      }
       if (e.target.id === "save-event") {
         const form = document.getElementById("event-form");
         if (form) saveEventFromForm(form);
@@ -2841,6 +3059,7 @@
     }
     bind();
     ensureWeather();
+    ensureSchoolLunches(state.cursor);
     render();
     updateCloudStatus();
   });
