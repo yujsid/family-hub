@@ -312,7 +312,8 @@
     if (Object.keys(entry).length) state.meals[dateStr] = entry;
     else delete state.meals[dateStr];
     save();
-    toast("식단을 저장했습니다.");
+    toast(entry.lunch ? "식단을 저장했습니다." : "식단을 저장했습니다. 점심은 신서초 급식을 사용해요.");
+    fillMealForm(parseYmd(dateStr));
     render();
   }
 
@@ -544,7 +545,10 @@
     saveTimer = setTimeout(async () => {
       try {
         state.saving = true;
-        await familyRef.set(payloadFromState(), { merge: true });
+        const payload = payloadFromState();
+        await familyRef.set(payload, { merge: true });
+        // merge:true deep-merges maps, so deleted meal keys would linger unless replaced.
+        await familyRef.update({ meals: state.meals || {} });
         state.cloudError = "";
       } catch (err) {
         state.cloudError = err.message || String(err);
