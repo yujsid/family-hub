@@ -1520,10 +1520,10 @@ input[type="radio"] {
     width: 100%;
   }
   .day-modal {
-    max-height: min(82vh, 640px);
+    max-height: min(74dvh, 620px);
   }
   .day-modal .day-panel-body {
-    max-height: 12.5rem;
+    max-height: 11rem;
   }
   .chip {
     min-height: 36px;
@@ -1601,15 +1601,6 @@ input[type="radio"] {
     justify-self: end;
     min-height: 40px;
   }
-  .panel-actions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .panel-actions button {
-    min-height: 40px;
-    width: 100%;
-  }
   .calendar-with-panel {
     grid-template-columns: 1fr;
   }
@@ -1640,23 +1631,72 @@ input[type="radio"] {
   .talk-time { margin-left: 0; }
   #add-post-btn { min-height: 44px; }
   .modal-backdrop {
-    padding: 0;
-    align-items: end;
+    padding: 10px 10px calc(72px + env(safe-area-inset-bottom));
+    align-items: start;
   }
   .modal-backdrop:not([hidden]) {
-    align-items: end;
+    align-items: start;
   }
   .modal {
     width: 100%;
-    max-height: min(92dvh, 100%);
-    border-radius: 20px 20px 0 0;
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    max-height: min(78dvh, 100%);
+    border-radius: 18px;
+    padding: 14px 14px 12px;
+    margin-top: 6px;
+  }
+  .day-modal {
+    max-height: min(74dvh, 620px);
+  }
+  .day-modal h3 {
+    margin: 0 0 8px;
+    font-size: 17px;
+  }
+  .day-modal .meal-plan-block {
+    margin: 6px 0 8px;
+    padding: 8px 10px;
+  }
+  .day-modal .meal-plan-head {
+    margin-bottom: 6px;
+  }
+  .day-modal .meal-plan-head h4 {
+    font-size: 14px;
+  }
+  .day-modal .meal-row {
+    padding: 5px 8px;
+    gap: 6px;
+    grid-template-columns: 56px 1fr;
+  }
+  .day-modal .meal-slot {
+    font-size: 12px;
+  }
+  .day-modal .meal-menu {
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .day-modal .panel-actions {
+    margin: 4px 0;
+  }
+  .day-modal .day-panel-body {
+    max-height: 11rem;
+    margin: 6px 0 8px;
+  }
+  .panel-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .panel-actions button {
+    min-height: 34px;
+    width: 100%;
+    padding: 6px 4px;
+    font-size: 12px;
   }
   .modal-actions {
     flex-wrap: wrap;
   }
   .modal-actions button {
-    min-height: 44px;
+    min-height: 40px;
     flex: 1;
   }
   .pin-pad button {
