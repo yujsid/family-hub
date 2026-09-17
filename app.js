@@ -1190,8 +1190,8 @@
     const em = end.getMonth() + 1;
     const sd = start.getDate();
     const ed = end.getDate();
-    if (sy === ey && sm === em) return `${sm}월 ${sd}일 ~ ${ed}일`;
-    if (sy === ey) return `${sy}년 ${sm}월 ${sd}일 ~ ${em}월 ${ed}일`;
+    if (sy === ey && sm === em) return `${sm}월 ${sd}~${ed}일`;
+    if (sy === ey) return `${sm}/${sd} ~ ${em}/${ed}`;
     return `${sy}.${sm}.${sd} ~ ${ey}.${em}.${ed}`;
   }
 
