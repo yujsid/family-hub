@@ -2686,7 +2686,13 @@
   }
 
   function bind() {
-    document.querySelector(".tabs").addEventListener("click", async (e) => {
+    const on = (sel, event, handler) => {
+      const el = typeof sel === "string" ? document.querySelector(sel) : sel;
+      if (!el) return;
+      el.addEventListener(event, handler);
+    };
+
+    on(".tabs", "click", async (e) => {
       const tab = e.target.closest(".tab");
       if (!tab) return;
       const next = tab.dataset.tab;
@@ -2703,32 +2709,32 @@
       render();
     });
 
-    $("#prev-period").addEventListener("click", () => shiftPeriod(-1));
-    $("#next-period").addEventListener("click", () => shiftPeriod(1));
-    $("#today-btn").addEventListener("click", () => {
+    on("#prev-period", "click", () => shiftPeriod(-1));
+    on("#next-period", "click", () => shiftPeriod(1));
+    on("#today-btn", "click", () => {
       state.cursor = startOfDay(new Date());
       state.selected = state.cursor;
       render();
     });
-    document.querySelector(".view-switch").addEventListener("click", (e) => {
+    on(".view-switch", "click", (e) => {
       const btn = e.target.closest("[data-cal-view]");
       if (!btn) return;
       state.calView = btn.dataset.calView;
       if (state.calView === "day") state.cursor = state.selected;
       render();
     });
-    $("#add-todo-list-btn").addEventListener("click", () => eventForm(null, "todo"));
-    $("#add-stamp-btn").addEventListener("click", () => stampForm());
-    $("#add-post-btn").addEventListener("click", () => postForm());
-    $("#stamp-prev").addEventListener("click", () => {
+    on("#add-todo-list-btn", "click", () => eventForm(null, "todo"));
+    on("#add-stamp-btn", "click", () => stampForm());
+    on("#add-post-btn", "click", () => postForm());
+    on("#stamp-prev", "click", () => {
       state.cursor.setMonth(state.cursor.getMonth() - 1);
       render();
     });
-    $("#stamp-next").addEventListener("click", () => {
+    on("#stamp-next", "click", () => {
       state.cursor.setMonth(state.cursor.getMonth() + 1);
       render();
     });
-    $("#todo-today-btn").addEventListener("click", () => {
+    on("#todo-today-btn", "click", () => {
       state.cursor = startOfDay(new Date());
       state.selected = state.cursor;
       state.todoFutureExtra = 0;
@@ -2741,7 +2747,7 @@
       }
     });
 
-    $("#type-filters").addEventListener("change", (e) => {
+    on("#type-filters", "change", (e) => {
       const id = e.target.dataset.type;
       if (!id) return;
       state.typeFilter[id] = e.target.checked;
@@ -2761,13 +2767,19 @@
     });
 
     document.body.addEventListener("click", async (e) => {
-      const cell = e.target.closest("[data-date]");
+      const cell = e.target.closest("#calendar-root [data-date], .week-day-card[data-date], .day-cell[data-date]");
       if (cell && !e.target.closest("button") && !e.target.closest("input") && !e.target.closest(".todo-day")) {
         state.selected = parseYmd(cell.dataset.date);
         if (state.calView === "day") state.cursor = state.selected;
-        const openModalDetail = state.tab === "calendar" && state.calView !== "day";
+        const openModalDetail = state.tab === "calendar";
         render();
-        if (openModalDetail) openDayDetailModal(state.selected);
+        if (openModalDetail) {
+          try {
+            await openDayDetailModal(state.selected);
+          } catch (err) {
+            toast(err.message || "날짜 상세를 열지 못했어요.");
+          }
+        }
         return;
       }
       if (e.target.id === "panel-add-event") eventForm(null, "schedule");

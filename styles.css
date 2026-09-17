@@ -58,34 +58,16 @@ body {
   flex-wrap: wrap;
   margin-bottom: 22px;
 }
-.brand-line {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6px 8px;
-  margin: 0;
-  min-width: 0;
-}
-.eyebrow {
-  margin: 0;
-  letter-spacing: 0.04em;
-  font-size: 13px;
-  color: var(--muted);
-  font-weight: 700;
-  white-space: nowrap;
-}
-.brand-sep {
-  color: var(--muted);
-  font-weight: 700;
-}
 .brand-title,
 h1 {
   margin: 0;
-  font-family: "Jua", "Nunito", sans-serif;
-  font-size: 30px;
+  font-family: "Nunito", "Jua", sans-serif;
+  font-size: 28px;
+  font-weight: 800;
   letter-spacing: -0.02em;
   color: #5a4034;
-  line-height: 1.15;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tabs {
@@ -1423,21 +1405,17 @@ input[type="radio"] {
     padding-right: max(12px, env(safe-area-inset-right));
   }
   h1,
-  .brand-title { font-size: 18px; }
+  .brand-title {
+    font-size: 17px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
   .topbar {
     align-items: center;
     margin-bottom: 8px;
-  }
-  .brand-line {
-    flex-wrap: nowrap;
-    gap: 6px;
-    align-items: center;
-  }
-  .eyebrow {
-    font-size: 11px;
-  }
-  .brand-sep {
-    font-size: 12px;
   }
   .tabs {
     position: fixed;
@@ -1692,5 +1670,5 @@ input[type="radio"] {
 @media (max-width: 380px) {
   .stamp-cats { grid-template-columns: 1fr; }
   h1,
-  .brand-title { font-size: 16px; }
+  .brand-title { font-size: 15px; font-weight: 800; }
 }

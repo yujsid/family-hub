@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v30";
+const CACHE = "family-hub-v31";
 const ASSETS = [
   "./",
   "./index.html",
@@ -36,6 +36,28 @@ self.addEventListener("fetch", (event) => {
     url.hostname.includes("open.neis.go.kr") ||
     url.hostname.includes("raw.githubusercontent.com")
   ) {
+    return;
+  }
+
+  // Network-first for app shell so updates show up reliably on phones.
+  const isAppShell =
+    url.pathname.endsWith("/") ||
+    url.pathname.endsWith("/index.html") ||
+    url.pathname.endsWith("/app.js") ||
+    url.pathname.endsWith("/styles.css") ||
+    url.pathname.endsWith("/firebase-config.js") ||
+    url.pathname.endsWith("/sw.js");
+
+  if (isAppShell) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, copy));
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
     return;
   }
 
