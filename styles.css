@@ -592,7 +592,7 @@ button.primary {
 }
 .day-modal .day-panel-body {
   margin: 8px 0 12px;
-  max-height: 13.5rem; /* ~3 item rows */
+  max-height: 14.5rem; /* ~3 detail rows */
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1523,7 +1523,7 @@ input[type="radio"] {
     max-height: min(74dvh, 620px);
   }
   .day-modal .day-panel-body {
-    max-height: 11rem;
+    max-height: 13.5rem;
   }
   .chip {
     min-height: 36px;
@@ -1677,8 +1677,25 @@ input[type="radio"] {
     margin: 4px 0;
   }
   .day-modal .day-panel-body {
-    max-height: 11rem;
+    max-height: 13.5rem; /* ~3 compact detail rows */
     margin: 6px 0 8px;
+  }
+  .day-modal .item-row {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 8px;
+    gap: 6px;
+  }
+  .day-modal .item-row button,
+  .day-modal .item-row .danger {
+    grid-column: auto;
+    justify-self: end;
+    min-height: 32px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .day-modal .item-row .meta {
+    font-size: 11px;
   }
   .panel-actions {
     width: 100%;
