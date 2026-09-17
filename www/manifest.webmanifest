@@ -1,6 +1,6 @@
 {
-  "name": "우리 가족 허브",
-  "short_name": "가족허브",
+  "name": "고소한 채소 가족의 허브",
+  "short_name": "채소가족허브",
   "description": "일정, 할 일, 용돈 도장을 함께 관리하는 가족 앱",
   "start_url": "./index.html",
   "scope": "./",
