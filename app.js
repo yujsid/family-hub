@@ -2717,10 +2717,7 @@
       if (state.calView === "day") state.cursor = state.selected;
       render();
     });
-    $("#add-event-btn").addEventListener("click", () => eventForm(null, "schedule"));
-    $("#add-todo-btn").addEventListener("click", () => eventForm(null, "todo"));
     $("#add-todo-list-btn").addEventListener("click", () => eventForm(null, "todo"));
-    $("#add-stamp-calendar-btn").addEventListener("click", () => stampForm());
     $("#add-stamp-btn").addEventListener("click", () => stampForm());
     $("#add-post-btn").addEventListener("click", () => postForm());
     $("#stamp-prev").addEventListener("click", () => {

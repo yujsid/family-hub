@@ -131,6 +131,22 @@ h1 {
   font-weight: 700;
 }
 .view-switch { display: flex; gap: 6px; }
+.calendar-view-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.calendar-view-bar #today-btn {
+  flex: 1 1 auto;
+  min-width: 88px;
+}
+.calendar-view-bar .view-switch {
+  flex: 1 1 auto;
+}
+.calendar-view-bar .view-switch button {
+  flex: 1 1 0;
+}
 .view-switch .is-active,
 button.primary {
   background: linear-gradient(180deg, #ffb089, var(--coral));
@@ -571,10 +587,20 @@ button.primary {
 .day-modal .panel-actions {
   margin: 8px 0 4px;
 }
+.day-modal {
+  display: flex;
+  flex-direction: column;
+  max-height: min(85vh, 720px);
+}
 .day-modal .day-panel-body {
   margin: 8px 0 12px;
-  max-height: min(55vh, 420px);
+  max-height: 13.5rem; /* ~3 item rows */
   overflow: auto;
+  overscroll-behavior: contain;
+}
+.day-modal .modal-actions {
+  flex-shrink: 0;
+  margin-top: 4px;
 }
 .todo-list-root {
   display: grid;
@@ -1422,21 +1448,36 @@ input[type="radio"] {
     min-width: 0;
     font-size: 16px;
   }
-  .month-nav #today-btn,
-  .month-nav #todo-today-btn,
-  .month-nav #stamp-prev + h2,
-  .view-switch,
-  .actions {
-    width: 100%;
-  }
-  .month-nav #today-btn,
   .month-nav #todo-today-btn {
+    width: 100%;
     grid-column: 1 / -1;
   }
-  .month-nav button:not(#today-btn):not(#todo-today-btn) {
+  .month-nav button:not(#todo-today-btn) {
     width: 44px;
     min-height: 44px;
     padding: 0;
+  }
+  .calendar-view-bar {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+  .calendar-view-bar #today-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 4px;
+    font-size: 13px;
+  }
+  .calendar-view-bar .view-switch {
+    display: contents;
+  }
+  .calendar-view-bar .view-switch button {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 4px;
+    font-size: 13px;
   }
   .view-switch {
     display: grid;
@@ -1449,26 +1490,20 @@ input[type="radio"] {
   }
   .label-long { display: none; }
   .label-short { display: inline; }
-  .calendar-actions {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-  }
-  .calendar-actions button {
-    flex: none;
-    width: 100%;
-    min-width: 0;
-    min-height: 40px;
-    padding: 8px 4px;
-    font-size: 13px;
-  }
   .view-switch button,
-  .actions:not(.calendar-actions) button,
+  .actions button,
   #add-stamp-btn,
   #add-todo-list-btn,
-  #add-post-btn {
+  #add-post-btn,
+  #todo-today-btn {
     min-height: 44px;
     width: 100%;
+  }
+  .day-modal {
+    max-height: min(82vh, 640px);
+  }
+  .day-modal .day-panel-body {
+    max-height: 12.5rem;
   }
   .chip {
     min-height: 36px;
