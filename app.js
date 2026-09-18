@@ -4,8 +4,10 @@
     { id: "sinjeong", name: "윤신정", shortName: "신정", role: "엄마", color: "#d76a4f" },
     { id: "sua", name: "유수아", shortName: "수아", role: "딸", color: "#5e8f74" },
     { id: "sumin", name: "유수민", shortName: "수민", role: "아들", color: "#d4a017" },
+    { id: "family", name: "가족행사", shortName: "행사", role: "전체", color: "#8a6a4a", shared: true },
   ];
-  const ALLOWANCE_MEMBERS = MEMBERS.filter((m) => m.role === "딸" || m.role === "아들");
+  const PEOPLE_MEMBERS = MEMBERS.filter((m) => !m.shared);
+  const ALLOWANCE_MEMBERS = PEOPLE_MEMBERS.filter((m) => m.role === "딸" || m.role === "아들");
 
   const DEFAULT_CATEGORIES = [
     { id: "tidy", name: "정리하기", emoji: "📦" },
@@ -72,7 +74,7 @@
     calView: "month",
     cursor: startOfDay(new Date()),
     selected: startOfDay(new Date()),
-    memberFilter: Object.fromEntries(MEMBERS.map((m) => [m.id, true])),
+    memberFilter: Object.fromEntries(PEOPLE_MEMBERS.map((m) => [m.id, true])),
     todoFutureExtra: 0,
     typeFilter: { schedule: true, todo: true, stamp: true },
     pinBuffer: "",
@@ -661,26 +663,46 @@
   }
 
   function memberById(id) {
-    return MEMBERS.find((m) => m.id === id);
+    return MEMBERS.find((m) => m.id === id) || MEMBERS[0];
   }
 
-  function getPreferredMemberId(pool = MEMBERS) {
+  function isSharedMember(id) {
+    return Boolean(memberById(id)?.shared);
+  }
+
+  function passesMemberFilter(memberId) {
+    if (isSharedMember(memberId)) return true;
+    return Boolean(state.memberFilter[memberId]);
+  }
+
+  function getPreferredMemberId(pool = PEOPLE_MEMBERS) {
     try {
       const saved = localStorage.getItem(PREFERRED_MEMBER_KEY);
       if (saved && pool.some((m) => m.id === saved)) return saved;
     } catch (_) {
       /* ignore */
     }
-    return pool[0]?.id || MEMBERS[0].id;
+    return pool[0]?.id || PEOPLE_MEMBERS[0].id;
   }
 
   function setPreferredMemberId(id) {
-    if (!id || !MEMBERS.some((m) => m.id === id)) return;
+    if (!id || !PEOPLE_MEMBERS.some((m) => m.id === id)) return;
     try {
       localStorage.setItem(PREFERRED_MEMBER_KEY, id);
     } catch (_) {
       /* ignore */
     }
+  }
+
+  function memberOptionLabel(m) {
+    return m.shared ? m.name : `${m.name} (${m.role})`;
+  }
+
+  function memberSelectOptions(selectedId, { includeShared = false } = {}) {
+    const list = includeShared ? MEMBERS : PEOPLE_MEMBERS;
+    return list
+      .map((m) => `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${esc(memberOptionLabel(m))}</option>`)
+      .join("");
   }
 
   function categoryById(id) {
@@ -728,7 +750,7 @@
       .filter(
         (ev) =>
           occursOn(ev, date) &&
-          state.memberFilter[ev.memberId] &&
+          passesMemberFilter(ev.memberId) &&
           state.typeFilter[ev.kind]
       )
       .sort((a, b) => {
@@ -797,7 +819,7 @@
   function renderMemberFilters() {
     const html =
       `<span class="filter-label">가족</span>` +
-      MEMBERS.map(
+      PEOPLE_MEMBERS.map(
         (m) => `
       <label class="chip">
         <span class="dot" style="background:${m.color}"></span>
@@ -1154,7 +1176,7 @@
 
   function todosOn(date) {
     return state.events
-      .filter((ev) => ev.kind === "todo" && occursOn(ev, date) && state.memberFilter[ev.memberId])
+      .filter((ev) => ev.kind === "todo" && occursOn(ev, date) && passesMemberFilter(ev.memberId))
       .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
   }
 
@@ -1619,12 +1641,6 @@
         </div>
       </article>`;
     }).join("");
-  }
-
-  function memberSelectOptions(selectedId) {
-    return MEMBERS.map(
-      (m) => `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${m.name} (${m.role})</option>`
-    ).join("");
   }
 
   function renderTalk() {
@@ -2393,7 +2409,12 @@
         <label>제목 <input name="title" required value="${ev.title || ""}" placeholder="예: 영어 학원, 숙제" /></label>
         <label>가족
           <select name="memberId">
-            ${MEMBERS.map((m) => `<option value="${m.id}" ${m.id === ev.memberId ? "selected" : ""}>${m.name} (${m.role})</option>`).join("")}
+            ${(ev.kind === "todo" ? PEOPLE_MEMBERS : MEMBERS)
+              .map(
+                (m) =>
+                  `<option value="${m.id}" ${m.id === ev.memberId ? "selected" : ""}>${esc(memberOptionLabel(m))}</option>`
+              )
+              .join("")}
           </select>
         </label>
         <label>날짜 <input type="date" name="date" required value="${occDate}" /></label>
