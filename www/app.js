@@ -709,6 +709,21 @@
     return state.categories.find((c) => c.id === id) || { id, name: "삭제된 항목", emoji: "❓" };
   }
 
+  function eventSpanEnd(ev) {
+    const end = String(ev?.endDate || "").trim();
+    if (end && /^\d{4}-\d{2}-\d{2}$/.test(end)) return end;
+    return ev?.date || "";
+  }
+
+  function isMultiDayEvent(ev) {
+    if (!ev) return false;
+    const repeat = ev._seriesRepeat || ev.repeat;
+    if (repeat && repeat !== "none") return false;
+    const start = ev._seriesDate || ev.date;
+    const end = ev._seriesEndDate || eventSpanEnd(ev);
+    return Boolean(end && start && end > start);
+  }
+
   function occursOn(ev, date) {
     const day = startOfDay(date);
     const key = ymd(day);
@@ -717,9 +732,12 @@
 
     const start = parseYmd(ev.date);
     if (day < start) return false;
-    if (ev.repeatUntil && day > parseYmd(ev.repeatUntil)) return false;
 
-    if (ev.repeat === "none") return sameDay(day, start);
+    if (!ev.repeat || ev.repeat === "none") {
+      const end = parseYmd(eventSpanEnd(ev) || ev.date);
+      return day <= end;
+    }
+    if (ev.repeatUntil && day > parseYmd(ev.repeatUntil)) return false;
     if (ev.repeat === "daily") return true;
     if (ev.repeat === "weekly") {
       const days = ev.weekdays && ev.weekdays.length ? ev.weekdays : [start.getDay()];
@@ -741,6 +759,8 @@
       ...override,
       date: key,
       _occurrenceDate: key,
+      _seriesDate: ev.date,
+      _seriesEndDate: eventSpanEnd(ev),
       _seriesRepeat: ev.repeat,
     };
   }
@@ -856,11 +876,29 @@
   }
 
   function formatTimeRange(ev) {
+    if (isMultiDayEvent(ev)) {
+      const start = parseYmd(ev._seriesDate || ev.date);
+      const end = parseYmd(ev._seriesEndDate || eventSpanEnd(ev));
+      return `${start.getMonth() + 1}/${start.getDate()}~${end.getMonth() + 1}/${end.getDate()}`;
+    }
     if (ev.allDay) return "하루";
     const start = ev.startTime || "";
     const end = ev.endTime || "";
     if (start && end) return `${start}~${end}`;
     return start || "";
+  }
+
+  function formatEventWhen(occ, seriesEv) {
+    const source = seriesEv || occ;
+    if (isMultiDayEvent(source) || isMultiDayEvent(occ)) {
+      const start = parseYmd(source._seriesDate || source.date || occ._seriesDate);
+      const end = parseYmd(source._seriesEndDate || eventSpanEnd(source) || occ._seriesEndDate);
+      const span = `${start.getMonth() + 1}/${start.getDate()} ~ ${end.getMonth() + 1}/${end.getDate()}`;
+      if (occ.allDay) return `기간 ${span}`;
+      return `기간 ${span} · ${occ.startTime || ""} ~ ${occ.endTime || ""}`;
+    }
+    if (occ.allDay) return "하루 종일";
+    return `${occ.startTime || ""} ~ ${occ.endTime || ""}`;
   }
 
   function pillHtml(ev, date) {
@@ -1036,7 +1074,7 @@
       .map((ev) => {
         const occ = getOccurrence(ev, d);
         const m = memberById(occ.memberId);
-        const time = occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`;
+        const time = formatEventWhen(occ, ev);
         const done = occ.kind === "todo" && isTodoDone(ev, d);
         return `
           <div class="item-row kind-${occ.kind}" style="--member:${m.color}">
@@ -1091,7 +1129,7 @@
           }
           <div class="item-body">
             <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${esc(occ.title)}</strong>
-            <div class="meta">${esc(m.name)} · ${occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`}${isRecurring(ev) ? " · 반복" : ""}</div>
+            <div class="meta">${esc(m.name)} · ${formatEventWhen(occ, ev)}${isRecurring(ev) ? " · 반복" : ""}${isMultiDayEvent(ev) ? " · 기간" : ""}</div>
           </div>
           <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
         </div>`;
@@ -1184,7 +1222,7 @@
     const occ = getOccurrence(ev, d);
     const m = memberById(occ.memberId);
     const done = isTodoDone(ev, d);
-    const time = occ.allDay ? "하루 종일" : `${occ.startTime || ""} ~ ${occ.endTime || ""}`;
+    const time = formatEventWhen(occ, ev);
     return `<div class="item-row kind-todo${done ? " is-done" : ""}${overdue && !done ? " is-overdue" : ""}" style="--member:${m.color}">
       <span class="item-kind">할일</span>
       <input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />
@@ -2378,12 +2416,16 @@
       allDay: true,
       startTime: "16:00",
       endTime: "18:00",
+      endDate: "",
       repeat: "none",
       weekdays: [],
       repeatUntil: "",
       note: "",
     };
     const ev = existing ? getOccurrence(existing, parseYmd(occDate)) : base;
+    const series = existing || base;
+    const startDateVal = existing && !isRecurring(existing) ? series.date || occDate : occDate;
+    const endDateVal = series.endDate || "";
     const recurring = isRecurring(existing);
     const weekdayChecks = [1, 2, 3, 4, 5, 6, 0]
       .map((n) => {
@@ -2417,7 +2459,13 @@
               .join("")}
           </select>
         </label>
-        <label>날짜 <input type="date" name="date" required value="${occDate}" /></label>
+        <div class="row-2">
+          <label>시작일 <input type="date" name="date" required value="${startDateVal}" /></label>
+          <label id="end-date-wrap" style="${recurring ? "display:none" : ""}">종료일
+            <input type="date" name="endDate" value="${endDateVal || startDateVal}" />
+          </label>
+        </div>
+        <p class="hint" id="end-date-hint" style="${recurring ? "display:none" : ""}">종료일을 시작일보다 뒤로 두면 그 기간 동안 표시됩니다.</p>
         <label class="check-row">
           <input type="checkbox" name="allDay" ${ev.allDay ? "checked" : ""} />
           <span>하루 종일 (시간 없이)</span>
@@ -2461,14 +2509,21 @@
 
   function readEventFields(form) {
     const fd = new FormData(form);
+    const date = fd.get("date");
+    let endDate = String(fd.get("endDate") || "").trim();
+    const repeat = fd.get("repeat") || "none";
+    if (repeat !== "none") endDate = "";
+    else if (!endDate || endDate < date) endDate = date;
+    if (endDate === date) endDate = "";
     return {
       title: String(fd.get("title")).trim(),
       memberId: fd.get("memberId"),
-      date: fd.get("date"),
+      date,
+      endDate,
       allDay: fd.get("allDay") === "on",
       startTime: fd.get("startTime"),
       endTime: fd.get("endTime"),
-      repeat: fd.get("repeat") || "none",
+      repeat,
       weekdays: [...form.querySelectorAll("[name=wd]:checked")].map((el) => Number(el.value)),
       repeatUntil: fd.get("repeatUntil") || "",
       note: String(fd.get("note") || ""),
@@ -3081,11 +3136,15 @@
       if (e.target.name === "repeat") {
         const weekdayWrap = $("#weekday-wrap");
         const untilWrap = $("#repeat-until-wrap");
+        const endDateWrap = $("#end-date-wrap");
+        const endDateHint = $("#end-date-hint");
         const untilInput = document.querySelector("#event-form [name=repeatUntil]");
         const dateInput = document.querySelector("#event-form [name=date]");
         const eventId = document.querySelector("#event-form [name=id]")?.value;
         if (weekdayWrap) weekdayWrap.style.display = e.target.value === "weekly" ? "" : "none";
         if (untilWrap) untilWrap.style.display = e.target.value === "none" ? "none" : "";
+        if (endDateWrap) endDateWrap.style.display = e.target.value === "none" ? "" : "none";
+        if (endDateHint) endDateHint.style.display = e.target.value === "none" ? "" : "none";
         if (untilInput && e.target.value !== "none") {
           // 새 일정이거나 종료일이 비어 있으면 기본 +3개월
           if (!eventId || !untilInput.value) {
@@ -3093,10 +3152,18 @@
           }
         }
       }
+      if (e.target.name === "date") {
+        const endInput = document.querySelector("#event-form [name=endDate]");
+        if (endInput && endInput.value && endInput.value < e.target.value) endInput.value = e.target.value;
+      }
       if (e.target.name === "scope") {
         const seriesFields = $("#series-fields");
+        const endDateWrap = $("#end-date-wrap");
+        const endDateHint = $("#end-date-hint");
         const dateInput = document.querySelector("#event-form [name=date]");
+        const endInput = document.querySelector("#event-form [name=endDate]");
         const occInput = document.querySelector("#event-form [name=occurrenceDate]");
+        const repeatSelect = document.querySelector("#event-form [name=repeat]");
         const id = document.querySelector("#event-form [name=id]")?.value;
         const existing = state.events.find((x) => x.id === id);
         if (seriesFields) seriesFields.style.display = e.target.value === "all" ? "" : "none";
@@ -3104,6 +3171,11 @@
           if (e.target.value === "all" && existing) dateInput.value = existing.date;
           else dateInput.value = occInput.value;
         }
+        const repeatVal = repeatSelect?.value || existing?.repeat || "none";
+        const showEnd = e.target.value === "all" && repeatVal === "none";
+        if (endDateWrap) endDateWrap.style.display = showEnd ? "" : "none";
+        if (endDateHint) endDateHint.style.display = showEnd ? "" : "none";
+        if (showEnd && endInput && existing?.endDate) endInput.value = existing.endDate;
       }
     });
 
