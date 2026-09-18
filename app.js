@@ -4,7 +4,7 @@
     { id: "sinjeong", name: "윤신정", shortName: "신정", role: "엄마", color: "#d76a4f" },
     { id: "sua", name: "유수아", shortName: "수아", role: "딸", color: "#5e8f74" },
     { id: "sumin", name: "유수민", shortName: "수민", role: "아들", color: "#d4a017" },
-    { id: "family", name: "가족행사", shortName: "행사", role: "전체", color: "#8a6a4a", shared: true },
+    { id: "family", name: "공통", shortName: "공통", role: "전체", color: "#8a6a4a", shared: true },
   ];
   const PEOPLE_MEMBERS = MEMBERS.filter((m) => !m.shared);
   const ALLOWANCE_MEMBERS = PEOPLE_MEMBERS.filter((m) => m.role === "딸" || m.role === "아들");
