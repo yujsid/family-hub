@@ -55,8 +55,8 @@
   ];
   const POKE_MAX_ID = 151; // 1세대
   const TIMES_RANK_KEY = "family-hub-times-rank";
-  const TIMES_QUESTION_SECONDS = 5;
-  const TIMES_MAX_WRONG = 2;
+  const TIMES_QUESTION_SECONDS = 3;
+  const TIMES_MAX_WRONG = 1;
   const TIMES_RANK_TOP = 5;
   const TIMES_CORRECT_DELAY_MS = 700;
   const TIMES_WRONG_DELAY_MS = 900;
