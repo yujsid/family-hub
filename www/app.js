@@ -54,6 +54,15 @@
     { id: "other", name: "기타" },
   ];
   const POKE_MAX_ID = 151; // 1세대
+  const TIMES_RANK_KEY = "family-hub-times-rank";
+  const TIMES_QUESTION_SECONDS = 5;
+  const TIMES_MAX_WRONG = 2;
+  const TIMES_RANK_TOP = 5;
+  const TIMES_CORRECT_DELAY_MS = 700;
+  const TIMES_WRONG_DELAY_MS = 900;
+  const TIMES_FAIL_DELAY_MS = 1400;
+  const TIMES_MIN = 2;
+  const TIMES_MAX = 9;
   const TODO_PAST_DAYS = 2;
   const TODO_FUTURE_DAYS = 5;
   const TODO_MORE_STEP = 5;
@@ -119,6 +128,28 @@
       endReason: "",
     },
     pokeRank: [],
+    activeGame: "poke",
+    timesGame: {
+      answered: false,
+      picked: null,
+      a: null,
+      b: null,
+      answer: null,
+      choices: [],
+      message: "",
+      countdown: 0,
+      feedback: "",
+    },
+    timesSession: {
+      phase: "setup",
+      playerId: "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    },
+    timesRank: [],
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -129,6 +160,8 @@
   let db = null;
   let pokeTimerId = null;
   let pokeAdvanceTimeout = null;
+  let timesTimerId = null;
+  let timesAdvanceTimeout = null;
   let schoolLunchPromise = null;
   let familyRef = null;
   let saveTimer = null;
@@ -192,11 +225,12 @@
       todoRate: state.todoRate,
       meals: state.meals,
       pokeRank: state.pokeRank,
+      timesRank: state.timesRank,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
   }
 
-  function normalizePokeRank(list) {
+  function normalizeGameRank(list) {
     if (!Array.isArray(list)) return [];
     return list
       .map((e) => ({
@@ -210,11 +244,29 @@
       .slice(-100);
   }
 
+  function normalizePokeRank(list) {
+    return normalizeGameRank(list);
+  }
+
+  function normalizeTimesRank(list) {
+    return normalizeGameRank(list);
+  }
+
   function readLocalPokeRank() {
     try {
       const raw = localStorage.getItem(POKE_RANK_KEY);
       const list = raw ? JSON.parse(raw) : [];
       return normalizePokeRank(list);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function readLocalTimesRank() {
+    try {
+      const raw = localStorage.getItem(TIMES_RANK_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return normalizeTimesRank(list);
     } catch (_) {
       return [];
     }
@@ -549,6 +601,7 @@
     state.todoRate = Number.isFinite(todoRate) && todoRate >= 0 ? todoRate : 500;
     state.meals = normalizeMeals(data.meals);
     state.pokeRank = normalizePokeRank(data.pokeRank);
+    state.timesRank = normalizeTimesRank(data.timesRank);
     const migrated = migrateLocalPokeRankIfNeeded();
     render();
     state.applyingRemote = false;
@@ -2383,6 +2436,415 @@
     resolvePokeAnswer(Number(choiceId) === g.id, Number(choiceId));
   }
 
+  function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function buildTimesChoices(a, b) {
+    const correct = a * b;
+    const used = new Set([correct]);
+    const candidates = [
+      a * (b + 1),
+      a * (b - 1),
+      (a + 1) * b,
+      (a - 1) * b,
+      a * b + a,
+      a * b - a,
+      a * b + b,
+      a * b - b,
+      (a + 1) * (b + 1),
+      (a - 1) * (b - 1),
+      a * b + 1,
+      a * b - 1,
+      a * b + 2,
+      a * b - 2,
+      correct + 10,
+      correct - 10,
+    ];
+    const wrong = [];
+    for (const n of shuffleArray(candidates)) {
+      if (wrong.length >= 3) break;
+      if (!Number.isFinite(n) || n < 1 || n > 100 || used.has(n)) continue;
+      wrong.push(n);
+      used.add(n);
+    }
+    let guard = 0;
+    while (wrong.length < 3 && guard++ < 80) {
+      const n = randInt(Math.max(1, correct - 12), correct + 12);
+      if (used.has(n)) continue;
+      wrong.push(n);
+      used.add(n);
+    }
+    return shuffleArray([correct, ...wrong.slice(0, 3)]);
+  }
+
+  function addTimesRankEntry(entry) {
+    state.timesRank.push({
+      name: String(entry?.name || "").trim(),
+      score: Number(entry?.score) || 0,
+      rounds: Number(entry?.rounds) || 0,
+      reason: String(entry?.reason || ""),
+      at: String(entry?.at || new Date().toISOString()),
+    });
+    if (state.timesRank.length > 100) state.timesRank = state.timesRank.slice(-100);
+    if (familyRef) {
+      save();
+      return;
+    }
+    try {
+      localStorage.setItem(TIMES_RANK_KEY, JSON.stringify(state.timesRank));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function getTimesRankBoard(limit = TIMES_RANK_TOP) {
+    const sorted = [...state.timesRank].sort(
+      (a, b) => b.score - a.score || String(b.at || "").localeCompare(String(a.at || ""))
+    );
+    return limit ? sorted.slice(0, limit) : sorted;
+  }
+
+  function scheduleTimesAdvance() {
+    clearTimesAdvance();
+    const g = state.timesGame;
+    const s = state.timesSession;
+    const isCorrect = g.picked === g.answer;
+    let delay = TIMES_WRONG_DELAY_MS;
+    if (s.wrongCount >= TIMES_MAX_WRONG) delay = TIMES_FAIL_DELAY_MS;
+    else if (isCorrect) delay = TIMES_CORRECT_DELAY_MS;
+    timesAdvanceTimeout = setTimeout(() => {
+      timesAdvanceTimeout = null;
+      if (s.phase !== "playing" || !g.answered) return;
+      if (s.wrongCount >= TIMES_MAX_WRONG) endTimesSession();
+      else loadTimesQuestion();
+    }, delay);
+  }
+
+  function clearTimesAdvance() {
+    if (timesAdvanceTimeout != null) {
+      clearTimeout(timesAdvanceTimeout);
+      timesAdvanceTimeout = null;
+    }
+  }
+
+  function clearTimesTimer() {
+    if (timesTimerId != null) {
+      clearInterval(timesTimerId);
+      timesTimerId = null;
+    }
+  }
+
+  function refreshTimesCountdownDom() {
+    const el = document.getElementById("times-countdown");
+    if (!el) return;
+    const g = state.timesGame;
+    el.textContent = `${g.countdown}초`;
+    el.classList.toggle("is-warn", g.countdown <= 2);
+  }
+
+  function startTimesTimer() {
+    clearTimesTimer();
+    const g = state.timesGame;
+    g.countdown = TIMES_QUESTION_SECONDS;
+    refreshTimesCountdownDom();
+    timesTimerId = setInterval(() => {
+      const s = state.timesSession;
+      if (s.phase !== "playing" || g.answered || g.answer == null) {
+        clearTimesTimer();
+        return;
+      }
+      g.countdown -= 1;
+      if (g.countdown <= 0) {
+        clearTimesTimer();
+        handleTimesTimeout();
+        return;
+      }
+      refreshTimesCountdownDom();
+    }, 1000);
+  }
+
+  function resolveTimesAnswer(isCorrect, picked) {
+    const g = state.timesGame;
+    const s = state.timesSession;
+    if (s.phase !== "playing" || g.answer == null || g.answered) return;
+    clearTimesTimer();
+    g.answered = true;
+    g.picked = picked;
+    s.round += 1;
+    g.feedback = isCorrect ? "correct" : "wrong";
+    if (isCorrect) {
+      s.score += 1;
+      g.message = "정답! 🎉";
+      toast(`정답! ${g.a} × ${g.b} = ${g.answer}`);
+    } else {
+      s.wrongCount += 1;
+      if (picked == null) g.message = "시간 초과! ⏰";
+      else g.message = `"${picked}"(은)는 틀렸어요!`;
+      if (s.wrongCount >= TIMES_MAX_WRONG) {
+        g.message = `${TIMES_MAX_WRONG}회 틀려서 탈락! 💥`;
+        s.endReason = "fail";
+      }
+      toast(`정답은 ${g.answer}입니다.`);
+    }
+    renderTimesGame();
+    scheduleTimesAdvance();
+  }
+
+  function handleTimesTimeout() {
+    resolveTimesAnswer(false, null);
+  }
+
+  function timesRankListHtml() {
+    const board = getTimesRankBoard();
+    if (!board.length) return `<li class="poke-rank-empty">아직 기록이 없어요.</li>`;
+    return board
+      .map(
+        (e, i) => `<li class="poke-rank-row rank-${i + 1}">
+          <span class="poke-rank-num">${pokeRankMedal(i + 1)}</span>
+          <span class="poke-rank-name">${esc(e.name)}</span>
+          <span class="poke-rank-score">${e.score}점</span>
+        </li>`
+      )
+      .join("");
+  }
+
+  function openTimesRankModal() {
+    openModal(`
+      <div class="poke-rank-modal">
+        <h3 class="poke-setup-title">구구단 Rank TOP ${TIMES_RANK_TOP}</h3>
+        <p class="hint">가족 공유 순위입니다. 점수가 높은 순으로 보여요.</p>
+        <ol class="poke-rank-list">${timesRankListHtml()}</ol>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">닫기</button>
+        </div>
+      </div>
+    `);
+  }
+
+  function renderTimesSetupHtml() {
+    const s = state.timesSession;
+    const opts = POKE_PLAYER_OPTIONS.map(
+      (p) =>
+        `<label class="check-row poke-player-opt">
+          <input type="radio" name="playerId" value="${p.id}" ${p.id === s.playerId ? "checked" : ""} />
+          <span>${esc(p.name)}</span>
+        </label>`
+    ).join("");
+    return `
+      <div class="poke-card poke-setup">
+        <h3 class="poke-setup-title">참가자 선택</h3>
+        <form id="times-setup-form" class="stack" action="#" method="post">
+          <div class="poke-player-list">${opts}</div>
+          <label id="times-other-wrap" class="poke-other-wrap" style="${s.playerId === "other" ? "" : "display:none"}">
+            이름
+            <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
+          </label>
+          <p class="hint">문제당 <strong>${TIMES_QUESTION_SECONDS}초</strong> · <strong>${TIMES_MAX_WRONG}회</strong> 틀리면 탈락 · ${TIMES_MIN}~${TIMES_MAX}단</p>
+          <div class="poke-actions">
+            <button class="primary" type="button" id="times-start-session">게임 시작</button>
+            <button type="button" class="times-open-rank-btn">순위 보기</button>
+          </div>
+        </form>
+      </div>`;
+  }
+
+  function renderTimesRankHtml() {
+    const s = state.timesSession;
+    return `
+      <div class="poke-card poke-rank-card">
+        <h3 class="poke-setup-title">게임 종료</h3>
+        <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score}점 · ${s.round}문제</p>
+        <p class="hint">${TIMES_MAX_WRONG}회 틀려서 게임이 끝났어요.</p>
+        <h4 class="poke-rank-heading">Rank TOP ${TIMES_RANK_TOP}</h4>
+        <ol class="poke-rank-list">${timesRankListHtml()}</ol>
+        <div class="poke-actions">
+          <button class="primary" type="button" id="times-play-again">다시 하기</button>
+          <button type="button" class="times-open-rank-btn">순위 보기</button>
+        </div>
+      </div>`;
+  }
+
+  function renderTimesGame() {
+    const root = $("#times-game-root");
+    if (!root) return;
+    const s = state.timesSession;
+    if (s.phase === "setup") {
+      root.innerHTML = renderTimesSetupHtml();
+      return;
+    }
+    if (s.phase === "ended") {
+      root.innerHTML = renderTimesRankHtml();
+      return;
+    }
+    const g = state.timesGame;
+    if (g.answer == null) {
+      root.innerHTML = `<div class="poke-card"><p class="hint">문제를 준비하는 중…</p></div>`;
+      return;
+    }
+    const choiceHtml = (g.choices || [])
+      .map((n) => {
+        let cls = "poke-choice";
+        if (g.answered) {
+          if (n === g.answer) cls += " is-correct";
+          else if (n === g.picked) cls += " is-wrong";
+          else cls += " is-dim";
+        }
+        return `<button type="button" class="${cls}" data-times-choice="${n}" ${g.answered ? "disabled" : ""}>${n}</button>`;
+      })
+      .join("");
+    const sessionEnded = g.answered && s.wrongCount >= TIMES_MAX_WRONG;
+    const cardFx = [
+      g.feedback ? `poke-card--${g.feedback}` : "",
+      !g.answered && g.countdown <= 2 ? "poke-card--urgent" : "",
+      sessionEnded ? "poke-card--fail" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const countdownHtml = g.answered
+      ? ""
+      : `<span class="poke-countdown${g.countdown <= 2 ? " is-warn" : ""}" id="times-countdown">${g.countdown || TIMES_QUESTION_SECONDS}초</span>`;
+    const scoreFx = g.feedback === "correct" ? " poke-score-pop" : "";
+    const eqFx = g.feedback === "correct" ? " is-pop" : g.feedback === "wrong" ? " is-shake" : "";
+    const prompt = g.answered
+      ? `정답은 <strong>${g.answer}</strong>!`
+      : "보기에서 정답을 골라 주세요";
+    root.innerHTML = `
+      <div class="poke-scorebar">
+        <span>참가 <strong>${esc(s.playerName)}</strong></span>
+        <span>문제 <strong>${s.round + 1}</strong>번째</span>
+        <span class="poke-score${scoreFx}">점수 <strong>${s.score}</strong></span>
+        ${countdownHtml}
+        <span class="poke-wrong-streak${s.wrongCount ? " is-warn" : ""}">오답 ${s.wrongCount}/${TIMES_MAX_WRONG}</span>
+      </div>
+      <div class="poke-card ${cardFx}">
+        <div class="times-stage">
+          <div class="times-equation${eqFx}">${g.a} × ${g.b} = ?</div>
+        </div>
+        <p class="poke-prompt">${prompt}</p>
+        ${g.message ? `<p class="poke-message poke-message--${g.feedback || "idle"}">${esc(g.message)}</p>` : ""}
+        <div class="poke-choices">${choiceHtml}</div>
+      </div>`;
+  }
+
+  function resetTimesToSetup() {
+    clearTimesTimer();
+    clearTimesAdvance();
+    state.timesSession = {
+      phase: "setup",
+      playerId: state.timesSession.playerId || "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    };
+    state.timesGame.answer = null;
+    state.timesGame.message = "";
+    renderTimesGame();
+  }
+
+  function startTimesSession(playerId, customName) {
+    const opt = POKE_PLAYER_OPTIONS.find((p) => p.id === playerId) || POKE_PLAYER_OPTIONS[0];
+    let playerName = opt.name;
+    if (playerId === "other") {
+      playerName = String(customName || "").trim();
+      if (!playerName) return toast("기타를 선택했으면 이름을 입력해 주세요.");
+    }
+    state.timesSession = {
+      phase: "playing",
+      playerId,
+      playerName,
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    };
+    loadTimesQuestion();
+  }
+
+  function endTimesSession() {
+    const s = state.timesSession;
+    if (s.phase !== "playing") return;
+    clearTimesTimer();
+    clearTimesAdvance();
+    if (!s.endReason) s.endReason = "fail";
+    addTimesRankEntry({
+      name: s.playerName,
+      score: s.score,
+      rounds: s.round,
+      reason: s.endReason,
+      at: new Date().toISOString(),
+    });
+    s.phase = "ended";
+    state.timesGame.answer = null;
+    renderTimesGame();
+  }
+
+  function loadTimesQuestion() {
+    const g = state.timesGame;
+    const s = state.timesSession;
+    if (s.phase !== "playing") return;
+    clearTimesTimer();
+    clearTimesAdvance();
+    const a = randInt(TIMES_MIN, TIMES_MAX);
+    const b = randInt(TIMES_MIN, TIMES_MAX);
+    g.a = a;
+    g.b = b;
+    g.answer = a * b;
+    g.choices = buildTimesChoices(a, b);
+    g.answered = false;
+    g.picked = null;
+    g.message = "";
+    g.feedback = "";
+    renderTimesGame();
+    startTimesTimer();
+  }
+
+  function pickTimesChoice(value) {
+    const g = state.timesGame;
+    const s = state.timesSession;
+    if (s.phase !== "playing" || g.answer == null || g.answered) return;
+    const n = Number(value);
+    resolveTimesAnswer(n === g.answer, n);
+  }
+
+  function setActiveGame(gameId) {
+    const next = gameId === "times" ? "times" : "poke";
+    if (state.activeGame === next) return;
+    state.activeGame = next;
+    document.querySelectorAll(".game-pick-btn").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.game === next);
+    });
+    const pokePanel = $("#game-panel-poke");
+    const timesPanel = $("#game-panel-times");
+    if (pokePanel) pokePanel.hidden = next !== "poke";
+    if (timesPanel) timesPanel.hidden = next !== "times";
+    if (next === "poke") {
+      renderPokeGame();
+      ensurePokeNamePool();
+    } else {
+      renderTimesGame();
+    }
+  }
+
+  function renderGameTab() {
+    const active = state.activeGame === "times" ? "times" : "poke";
+    document.querySelectorAll(".game-pick-btn").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.game === active);
+    });
+    const pokePanel = $("#game-panel-poke");
+    const timesPanel = $("#game-panel-times");
+    if (pokePanel) pokePanel.hidden = active !== "poke";
+    if (timesPanel) timesPanel.hidden = active !== "times";
+    if (active === "poke") {
+      renderPokeGame();
+      ensurePokeNamePool();
+    } else {
+      renderTimesGame();
+    }
+  }
+
   function render() {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${state.tab}`));
@@ -2392,10 +2854,7 @@
     if (state.tab === "todos") renderTodos();
     if (state.tab === "stamps") renderStampBoard();
     if (state.tab === "talk") renderTalk();
-    if (state.tab === "game") {
-      renderPokeGame();
-      ensurePokeNamePool();
-    }
+    if (state.tab === "game") renderGameTab();
     if (state.tab === "settings") renderSettings();
   }
 
@@ -2951,6 +3410,18 @@
       if (e.target.id === "poke-open-rank" || e.target.closest(".poke-open-rank-btn")) openPokeRankModal();
       const pokeChoice = e.target.closest("[data-poke-choice]");
       if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
+      const gamePick = e.target.closest("[data-game]");
+      if (gamePick && gamePick.classList.contains("game-pick-btn")) setActiveGame(gamePick.dataset.game);
+      if (e.target.id === "times-start-session") {
+        const form = document.getElementById("times-setup-form");
+        if (!form) return;
+        const fd = new FormData(form);
+        startTimesSession(fd.get("playerId") || "jaesang", fd.get("customName"));
+      }
+      if (e.target.id === "times-back-setup" || e.target.id === "times-play-again") resetTimesToSetup();
+      if (e.target.id === "times-open-rank" || e.target.closest(".times-open-rank-btn")) openTimesRankModal();
+      const timesChoice = e.target.closest("[data-times-choice]");
+      if (timesChoice) pickTimesChoice(timesChoice.dataset.timesChoice);
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
         if (form) saveCategoriesFromForm(form);
@@ -3129,6 +3600,11 @@
         const wrap = $("#poke-other-wrap");
         if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
       }
+      if (e.target.name === "playerId" && e.target.closest("#times-setup-form")) {
+        state.timesSession.playerId = e.target.value;
+        const wrap = $("#times-other-wrap");
+        if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
+      }
       if (e.target.name === "allDay") {
         const wrap = $("#time-fields");
         if (wrap) wrap.style.display = e.target.checked ? "none" : "";
@@ -3216,6 +3692,7 @@
   initCloud().then(() => {
     if (!isFirebaseConfigured()) {
       state.pokeRank = readLocalPokeRank();
+      state.timesRank = readLocalTimesRank();
     } else if (migrateLocalPokeRankIfNeeded()) {
       save();
     }
