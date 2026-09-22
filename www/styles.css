@@ -1114,6 +1114,68 @@ input[type="radio"] {
 }
 .game-panel[hidden] { display: none !important; }
 .game-menu[hidden] { display: none !important; }
+.quiz-stage-up {
+  position: relative;
+  overflow: hidden;
+  padding: 28px 18px 24px;
+  animation: quizStageUpIn 0.55s cubic-bezier(0.34, 1.45, 0.64, 1);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 208, 120, 0.45), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(120, 196, 255, 0.35), transparent 42%),
+    linear-gradient(165deg, #fff8e8, #ffe8d2 55%, #e8f3ff);
+}
+.quiz-stage-up::before,
+.quiz-stage-up::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffb089;
+  animation: quizStageSpark 1.4s ease-out infinite;
+}
+.quiz-stage-up::before {
+  top: 18%;
+  left: 14%;
+}
+.quiz-stage-up::after {
+  top: 22%;
+  right: 16%;
+  background: #6cb6ff;
+  animation-delay: 0.25s;
+}
+.quiz-stage-up-kicker {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+.quiz-stage-up-num {
+  margin: 8px 0 4px;
+  font-family: "Jua", "Nunito", sans-serif;
+  font-size: clamp(48px, 14vw, 72px);
+  line-height: 1;
+  color: var(--ink);
+  animation: pokeScorePop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.quiz-stage-up-detail {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+}
+.quiz-stage-up-detail strong {
+  color: var(--coral, #d76a4f);
+}
+@keyframes quizStageUpIn {
+  from { opacity: 0; transform: scale(0.88) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes quizStageSpark {
+  0% { opacity: 0; transform: scale(0.4) translateY(8px); }
+  35% { opacity: 1; transform: scale(1.2) translateY(0); }
+  100% { opacity: 0; transform: scale(0.6) translateY(-18px); }
+}
 .times-stage {
   display: grid;
   place-items: center;

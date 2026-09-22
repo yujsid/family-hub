@@ -48,6 +48,7 @@
   const QUIZ_CORRECT_DELAY_MS = 700;
   const QUIZ_WRONG_DELAY_MS = 900;
   const QUIZ_FAIL_DELAY_MS = 1400;
+  const QUIZ_STAGE_UP_MS = 1700;
   const POKE_PLAYER_OPTIONS = [
     { id: "jaesang", name: "유재상" },
     { id: "sinjeong", name: "윤신정" },
@@ -111,6 +112,7 @@
       error: "",
       countdown: 0,
       feedback: "",
+      stageUp: null,
     },
     pokeNamePool: [],
     pokeNamePoolLoading: false,
@@ -135,6 +137,7 @@
       message: "",
       countdown: 0,
       feedback: "",
+      stageUp: null,
     },
     timesSession: {
       phase: "setup",
@@ -1986,6 +1989,22 @@
     return quizStageIndex(answeredCount) + 1;
   }
 
+  function didQuizStageUp(answeredCountAfter) {
+    if (answeredCountAfter <= 0) return false;
+    return quizStageIndex(answeredCountAfter) > quizStageIndex(answeredCountAfter - 1);
+  }
+
+  function quizStageUpHtml(stageUp) {
+    if (!stageUp) return "";
+    return `
+      <div class="poke-card quiz-stage-up">
+        <p class="quiz-stage-up-kicker">LEVEL UP</p>
+        <p class="quiz-stage-up-num">${stageUp.stage}단계</p>
+        <p class="quiz-stage-up-detail">제한시간 <strong>${stageUp.seconds}초</strong></p>
+        <p class="hint">조금만 더 집중해 보세요!</p>
+      </div>`;
+  }
+
   function quizRulesHintHtml() {
     return `정답 <strong>${QUIZ_POINTS}점</strong> · <strong>${QUIZ_MAX_WRONG}회</strong> 틀리면 탈락<br/>1단계 5초(10문제) → 2단계 4초 → 3단계 3초 → 4단계 2초 → 5단계 1초(제한 없음)`;
   }
@@ -2111,8 +2130,31 @@
       pokeAdvanceTimeout = null;
       if (s.phase !== "playing" || !g.answered) return;
       if (s.wrongCount >= QUIZ_MAX_WRONG) endPokeSession();
+      else if (isCorrect && didQuizStageUp(s.round)) showPokeStageUp();
       else loadRandomPokemon();
     }, delay);
+  }
+
+  function showPokeStageUp() {
+    const g = state.pokeGame;
+    const s = state.pokeSession;
+    clearPokeTimer();
+    clearPokeAdvance();
+    g.stageUp = {
+      stage: quizStageNumber(s.round),
+      seconds: quizSecondsForRound(s.round),
+    };
+    g.id = null;
+    g.loading = false;
+    g.error = "";
+    renderPokeGame();
+    toast(`${g.stageUp.stage}단계! 제한시간 ${g.stageUp.seconds}초`);
+    pokeAdvanceTimeout = setTimeout(() => {
+      pokeAdvanceTimeout = null;
+      if (s.phase !== "playing") return;
+      g.stageUp = null;
+      loadRandomPokemon();
+    }, QUIZ_STAGE_UP_MS);
   }
 
   function clearPokeAdvance() {
@@ -2277,6 +2319,15 @@
       return;
     }
     const g = state.pokeGame;
+    if (g.stageUp) {
+      root.innerHTML = `
+        <div class="poke-scorebar">
+          <span>참가 <strong>${esc(s.playerName)}</strong></span>
+          <span>점수 <strong>${s.score}</strong></span>
+        </div>
+        ${quizStageUpHtml(g.stageUp)}`;
+      return;
+    }
     if (g.loading) {
       root.innerHTML = `<div class="poke-card"><p class="hint">포켓몬을 불러오는 중… (${esc(s.playerName)} · ${s.round + 1}번째 문제)</p></div>`;
       return;
@@ -2350,6 +2401,7 @@
     };
     state.pokeGame.id = null;
     state.pokeGame.error = "";
+    state.pokeGame.stageUp = null;
     renderPokeGame();
   }
 
@@ -2404,6 +2456,7 @@
     g.answered = false;
     g.pickedId = null;
     g.choices = [];
+    g.stageUp = null;
     renderPokeGame();
     const id = Math.floor(Math.random() * POKE_MAX_ID) + 1;
     try {
@@ -2530,8 +2583,29 @@
       timesAdvanceTimeout = null;
       if (s.phase !== "playing" || !g.answered) return;
       if (s.wrongCount >= QUIZ_MAX_WRONG) endTimesSession();
+      else if (isCorrect && didQuizStageUp(s.round)) showTimesStageUp();
       else loadTimesQuestion();
     }, delay);
+  }
+
+  function showTimesStageUp() {
+    const g = state.timesGame;
+    const s = state.timesSession;
+    clearTimesTimer();
+    clearTimesAdvance();
+    g.stageUp = {
+      stage: quizStageNumber(s.round),
+      seconds: quizSecondsForRound(s.round),
+    };
+    g.answer = null;
+    renderTimesGame();
+    toast(`${g.stageUp.stage}단계! 제한시간 ${g.stageUp.seconds}초`);
+    timesAdvanceTimeout = setTimeout(() => {
+      timesAdvanceTimeout = null;
+      if (s.phase !== "playing") return;
+      g.stageUp = null;
+      loadTimesQuestion();
+    }, QUIZ_STAGE_UP_MS);
   }
 
   function clearTimesAdvance() {
@@ -2691,6 +2765,15 @@
       return;
     }
     const g = state.timesGame;
+    if (g.stageUp) {
+      root.innerHTML = `
+        <div class="poke-scorebar">
+          <span>참가 <strong>${esc(s.playerName)}</strong></span>
+          <span>점수 <strong>${s.score}</strong></span>
+        </div>
+        ${quizStageUpHtml(g.stageUp)}`;
+      return;
+    }
     if (g.answer == null) {
       root.innerHTML = `<div class="poke-card"><p class="hint">문제를 준비하는 중…</p></div>`;
       return;
@@ -2755,6 +2838,7 @@
     };
     state.timesGame.answer = null;
     state.timesGame.message = "";
+    state.timesGame.stageUp = null;
     renderTimesGame();
   }
 
@@ -2811,6 +2895,7 @@
     g.picked = null;
     g.message = "";
     g.feedback = "";
+    g.stageUp = null;
     renderTimesGame();
     startTimesTimer();
   }
