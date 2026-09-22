@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=40" />
+  <link rel="stylesheet" href="styles.css?v=41" />
 </head>
 <body>
   <div class="app">
@@ -102,6 +102,7 @@
         <div class="game-menu-actions">
           <button type="button" class="primary game-menu-btn" data-game="poke">포켓몬 이름 맞추기</button>
           <button type="button" class="primary game-menu-btn" data-game="times">구구단 맞추기</button>
+          <button type="button" class="primary game-menu-btn" data-game="ox">스피드 OX 퀴즈</button>
         </div>
       </div>
 
@@ -121,6 +122,15 @@
         </div>
         <p class="hint">참가자를 고르고 구구단 문제를 풀어 보세요. 정답이면 바로 다음 문제로 넘어갑니다.</p>
         <div id="times-game-root" class="poke-game-root"></div>
+      </div>
+
+      <div id="game-panel-ox" class="game-panel" hidden>
+        <div class="toolbar">
+          <h2 class="talk-heading">스피드 OX 퀴즈</h2>
+          <button id="game-back-menu-ox" type="button">게임 선택</button>
+        </div>
+        <p class="hint">Open Trivia DB 영어 참/거짓 문제입니다. O(참) / X(거짓)을 고르세요.</p>
+        <div id="ox-game-root" class="poke-game-root"></div>
       </div>
     </section>
 
@@ -178,7 +188,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=40"></script>
-  <script src="app.js?v=40"></script>
+  <script src="firebase-config.js?v=41"></script>
+  <script src="app.js?v=41"></script>
 </body>
 </html>

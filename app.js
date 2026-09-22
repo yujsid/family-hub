@@ -60,6 +60,11 @@
   const TIMES_RANK_KEY = "family-hub-times-rank";
   const TIMES_MIN = 2;
   const TIMES_MAX = 9;
+  const OX_RANK_KEY = "family-hub-ox-rank";
+  const OX_API = "https://opentdb.com/api.php";
+  const OX_TOKEN_API = "https://opentdb.com/api_token.php";
+  const OX_FETCH_AMOUNT = 10;
+  const OX_RATE_MS = 5200;
   const TODO_PAST_DAYS = 2;
   const TODO_FUTURE_DAYS = 5;
   const TODO_MORE_STEP = 5;
@@ -149,6 +154,30 @@
       endReason: "",
     },
     timesRank: [],
+    oxGame: {
+      loading: false,
+      answered: false,
+      picked: null,
+      question: "",
+      answer: null,
+      category: "",
+      difficulty: "",
+      message: "",
+      error: "",
+      countdown: 0,
+      feedback: "",
+      stageUp: null,
+    },
+    oxSession: {
+      phase: "setup",
+      playerId: "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    },
+    oxRank: [],
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -161,6 +190,12 @@
   let pokeAdvanceTimeout = null;
   let timesTimerId = null;
   let timesAdvanceTimeout = null;
+  let oxTimerId = null;
+  let oxAdvanceTimeout = null;
+  let oxQueue = [];
+  let oxToken = "";
+  let oxLastFetchAt = 0;
+  let oxFetchPromise = null;
   let schoolLunchPromise = null;
   let familyRef = null;
   let saveTimer = null;
@@ -225,6 +260,7 @@
       meals: state.meals,
       pokeRank: state.pokeRank,
       timesRank: state.timesRank,
+      oxRank: state.oxRank,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
   }
@@ -251,6 +287,10 @@
     return normalizeGameRank(list);
   }
 
+  function normalizeOxRank(list) {
+    return normalizeGameRank(list);
+  }
+
   function readLocalPokeRank() {
     try {
       const raw = localStorage.getItem(POKE_RANK_KEY);
@@ -266,6 +306,16 @@
       const raw = localStorage.getItem(TIMES_RANK_KEY);
       const list = raw ? JSON.parse(raw) : [];
       return normalizeTimesRank(list);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function readLocalOxRank() {
+    try {
+      const raw = localStorage.getItem(OX_RANK_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return normalizeOxRank(list);
     } catch (_) {
       return [];
     }
@@ -601,6 +651,7 @@
     state.meals = normalizeMeals(data.meals);
     state.pokeRank = normalizePokeRank(data.pokeRank);
     state.timesRank = normalizeTimesRank(data.timesRank);
+    state.oxRank = normalizeOxRank(data.oxRank);
     const migrated = migrateLocalPokeRankIfNeeded();
     render();
     state.applyingRemote = false;
@@ -2908,8 +2959,504 @@
     resolveTimesAnswer(n === g.answer, n);
   }
 
+  function decodeOxText(raw) {
+    try {
+      return decodeURIComponent(String(raw || "").replace(/\+/g, "%20"));
+    } catch (_) {
+      return String(raw || "");
+    }
+  }
+
+  function oxAnswerLabel(answer) {
+    return answer === "True" ? "O · 참" : "X · 거짓";
+  }
+
+  async function ensureOxToken() {
+    if (oxToken) return oxToken;
+    const res = await fetch(`${OX_TOKEN_API}?command=request`);
+    if (!res.ok) throw new Error("퀴즈 서버에 연결하지 못했어요.");
+    const data = await res.json();
+    if (data.response_code === 0 && data.token) {
+      oxToken = data.token;
+      return oxToken;
+    }
+    return "";
+  }
+
+  async function waitOxRateLimit() {
+    if (!oxLastFetchAt) return;
+    const wait = OX_RATE_MS - (Date.now() - oxLastFetchAt);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  }
+
+  async function refillOxQueue() {
+    if (oxQueue.length >= 5) return;
+    if (oxFetchPromise) return oxFetchPromise;
+    oxFetchPromise = (async () => {
+      await waitOxRateLimit();
+      await ensureOxToken();
+      const tokenQ = oxToken ? `&token=${encodeURIComponent(oxToken)}` : "";
+      const url = `${OX_API}?amount=${OX_FETCH_AMOUNT}&type=boolean&encode=url3986${tokenQ}`;
+      oxLastFetchAt = Date.now();
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("퀴즈를 불러오지 못했어요.");
+      const data = await res.json();
+      if (data.response_code === 4 && oxToken) {
+        await waitOxRateLimit();
+        oxLastFetchAt = Date.now();
+        await fetch(`${OX_TOKEN_API}?command=reset&token=${encodeURIComponent(oxToken)}`);
+        await waitOxRateLimit();
+        oxLastFetchAt = Date.now();
+        const retry = await fetch(url);
+        const again = await retry.json();
+        if (again.response_code !== 0 || !Array.isArray(again.results)) {
+          throw new Error("퀴즈 문항을 모두 소진했어요. 다시 시작해 주세요.");
+        }
+        again.results.forEach((q) => {
+          oxQueue.push({
+            question: decodeOxText(q.question),
+            answer: q.correct_answer === "True" ? "True" : "False",
+            category: decodeOxText(q.category),
+            difficulty: String(q.difficulty || ""),
+          });
+        });
+        return;
+      }
+      if (data.response_code === 5) {
+        await new Promise((r) => setTimeout(r, OX_RATE_MS));
+        oxLastFetchAt = Date.now();
+        const retryRes = await fetch(url);
+        if (!retryRes.ok) throw new Error("퀴즈를 불러오지 못했어요.");
+        const retryData = await retryRes.json();
+        if (retryData.response_code !== 0 || !Array.isArray(retryData.results) || !retryData.results.length) {
+          throw new Error("요청이 너무 많아요. 잠시 후 다시 시작해 주세요.");
+        }
+        retryData.results.forEach((q) => {
+          oxQueue.push({
+            question: decodeOxText(q.question),
+            answer: q.correct_answer === "True" ? "True" : "False",
+            category: decodeOxText(q.category),
+            difficulty: String(q.difficulty || ""),
+          });
+        });
+        return;
+      }
+      if (data.response_code !== 0 || !Array.isArray(data.results) || !data.results.length) {
+        throw new Error("퀴즈 문제가 없어요. 잠시 후 다시 시도해 주세요.");
+      }
+      data.results.forEach((q) => {
+        oxQueue.push({
+          question: decodeOxText(q.question),
+          answer: q.correct_answer === "True" ? "True" : "False",
+          category: decodeOxText(q.category),
+          difficulty: String(q.difficulty || ""),
+        });
+      });
+    })().finally(() => {
+      oxFetchPromise = null;
+    });
+    return oxFetchPromise;
+  }
+
+  function addOxRankEntry(entry) {
+    state.oxRank.push({
+      name: String(entry?.name || "").trim(),
+      score: Number(entry?.score) || 0,
+      rounds: Number(entry?.rounds) || 0,
+      reason: String(entry?.reason || ""),
+      at: String(entry?.at || new Date().toISOString()),
+    });
+    if (state.oxRank.length > 100) state.oxRank = state.oxRank.slice(-100);
+    if (familyRef) {
+      save();
+      return;
+    }
+    try {
+      localStorage.setItem(OX_RANK_KEY, JSON.stringify(state.oxRank));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function getOxRankBoard(limit = QUIZ_RANK_TOP) {
+    const sorted = [...state.oxRank].sort(
+      (a, b) => b.score - a.score || String(b.at || "").localeCompare(String(a.at || ""))
+    );
+    return limit ? sorted.slice(0, limit) : sorted;
+  }
+
+  function clearOxAdvance() {
+    if (oxAdvanceTimeout != null) {
+      clearTimeout(oxAdvanceTimeout);
+      oxAdvanceTimeout = null;
+    }
+  }
+
+  function clearOxTimer() {
+    if (oxTimerId != null) {
+      clearInterval(oxTimerId);
+      oxTimerId = null;
+    }
+  }
+
+  function refreshOxCountdownDom() {
+    const el = document.getElementById("ox-countdown");
+    if (!el) return;
+    const g = state.oxGame;
+    el.textContent = `${g.countdown}초`;
+    el.classList.toggle("is-warn", g.countdown <= 2);
+  }
+
+  function startOxTimer() {
+    clearOxTimer();
+    const g = state.oxGame;
+    const s = state.oxSession;
+    g.countdown = quizSecondsForRound(s.round);
+    refreshOxCountdownDom();
+    oxTimerId = setInterval(() => {
+      if (s.phase !== "playing" || g.answered || !g.answer) {
+        clearOxTimer();
+        return;
+      }
+      g.countdown -= 1;
+      if (g.countdown <= 0) {
+        clearOxTimer();
+        handleOxTimeout();
+        return;
+      }
+      refreshOxCountdownDom();
+    }, 1000);
+  }
+
+  function scheduleOxAdvance() {
+    clearOxAdvance();
+    const g = state.oxGame;
+    const s = state.oxSession;
+    const isCorrect = g.picked === g.answer;
+    let delay = QUIZ_WRONG_DELAY_MS;
+    if (s.wrongCount >= QUIZ_MAX_WRONG) delay = QUIZ_FAIL_DELAY_MS;
+    else if (isCorrect) delay = QUIZ_CORRECT_DELAY_MS;
+    oxAdvanceTimeout = setTimeout(() => {
+      oxAdvanceTimeout = null;
+      if (s.phase !== "playing" || !g.answered) return;
+      if (s.wrongCount >= QUIZ_MAX_WRONG) endOxSession();
+      else if (isCorrect && didQuizStageUp(s.round)) showOxStageUp();
+      else loadOxQuestion();
+    }, delay);
+  }
+
+  function showOxStageUp() {
+    const g = state.oxGame;
+    const s = state.oxSession;
+    clearOxTimer();
+    clearOxAdvance();
+    g.stageUp = {
+      stage: quizStageNumber(s.round),
+      seconds: quizSecondsForRound(s.round),
+    };
+    g.answer = null;
+    g.question = "";
+    g.loading = false;
+    g.error = "";
+    renderOxGame();
+    toast(`${g.stageUp.stage}단계! 제한시간 ${g.stageUp.seconds}초`);
+    oxAdvanceTimeout = setTimeout(() => {
+      oxAdvanceTimeout = null;
+      if (s.phase !== "playing") return;
+      g.stageUp = null;
+      loadOxQuestion();
+    }, QUIZ_STAGE_UP_MS);
+  }
+
+  function resolveOxAnswer(isCorrect, picked) {
+    const g = state.oxGame;
+    const s = state.oxSession;
+    if (s.phase !== "playing" || !g.answer || g.answered) return;
+    clearOxTimer();
+    g.answered = true;
+    g.picked = picked;
+    s.round += 1;
+    g.feedback = isCorrect ? "correct" : "wrong";
+    if (isCorrect) {
+      s.score += QUIZ_POINTS;
+      g.message = `정답! +${QUIZ_POINTS}점 🎉`;
+      toast(`정답! ${oxAnswerLabel(g.answer)}`);
+    } else {
+      s.wrongCount += 1;
+      if (picked == null) g.message = "시간 초과! ⏰";
+      else g.message = `"${oxAnswerLabel(picked)}"(은)는 틀렸어요!`;
+      if (s.wrongCount >= QUIZ_MAX_WRONG) {
+        g.message = "틀려서 탈락! 💥";
+        s.endReason = "fail";
+      }
+      toast(`정답은 ${oxAnswerLabel(g.answer)}입니다.`);
+    }
+    renderOxGame();
+    scheduleOxAdvance();
+  }
+
+  function handleOxTimeout() {
+    resolveOxAnswer(false, null);
+  }
+
+  function oxRankListHtml() {
+    const board = getOxRankBoard();
+    if (!board.length) return `<li class="poke-rank-empty">아직 기록이 없어요.</li>`;
+    return board
+      .map(
+        (e, i) => `<li class="poke-rank-row rank-${i + 1}">
+          <span class="poke-rank-num">${pokeRankMedal(i + 1)}</span>
+          <span class="poke-rank-name">${esc(e.name)}</span>
+          <span class="poke-rank-score">${e.score}점</span>
+        </li>`
+      )
+      .join("");
+  }
+
+  function openOxRankModal() {
+    openModal(`
+      <div class="poke-rank-modal">
+        <h3 class="poke-setup-title">스피드 OX Rank TOP ${QUIZ_RANK_TOP}</h3>
+        <p class="hint">가족 공유 순위입니다. 점수가 높은 순으로 보여요.</p>
+        <ol class="poke-rank-list">${oxRankListHtml()}</ol>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">닫기</button>
+        </div>
+      </div>
+    `);
+  }
+
+  function renderOxSetupHtml() {
+    const s = state.oxSession;
+    const opts = POKE_PLAYER_OPTIONS.map(
+      (p) =>
+        `<label class="check-row poke-player-opt">
+          <input type="radio" name="playerId" value="${p.id}" ${p.id === s.playerId ? "checked" : ""} />
+          <span>${esc(p.name)}</span>
+        </label>`
+    ).join("");
+    return `
+      <div class="poke-card poke-setup">
+        <h3 class="poke-setup-title">참가자 선택</h3>
+        <form id="ox-setup-form" class="stack" action="#" method="post">
+          <div class="poke-player-list">${opts}</div>
+          <label id="ox-other-wrap" class="poke-other-wrap" style="${s.playerId === "other" ? "" : "display:none"}">
+            이름
+            <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
+          </label>
+          <p class="hint">${quizRulesHintHtml()}<br/>영어 참/거짓 · Open Trivia DB</p>
+          <div class="poke-actions">
+            <button class="primary" type="button" id="ox-start-session">게임 시작</button>
+            <button class="primary ox-open-rank-btn" type="button">순위 보기</button>
+          </div>
+        </form>
+      </div>`;
+  }
+
+  function renderOxRankHtml() {
+    const s = state.oxSession;
+    return `
+      <div class="poke-card poke-rank-card">
+        <h3 class="poke-setup-title">게임 종료</h3>
+        <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score}점 · ${s.round}문제</p>
+        <p class="hint">틀려서 게임이 끝났어요.</p>
+        <h4 class="poke-rank-heading">Rank TOP ${QUIZ_RANK_TOP}</h4>
+        <ol class="poke-rank-list">${oxRankListHtml()}</ol>
+        <div class="poke-actions">
+          <button class="primary" type="button" id="ox-play-again">다시 하기</button>
+          <button class="primary ox-open-rank-btn" type="button">순위 보기</button>
+        </div>
+      </div>`;
+  }
+
+  function renderOxGame() {
+    const root = $("#ox-game-root");
+    if (!root) return;
+    const s = state.oxSession;
+    if (s.phase === "setup") {
+      root.innerHTML = renderOxSetupHtml();
+      return;
+    }
+    if (s.phase === "ended") {
+      root.innerHTML = renderOxRankHtml();
+      return;
+    }
+    const g = state.oxGame;
+    if (g.stageUp) {
+      root.innerHTML = `
+        <div class="poke-scorebar">
+          <span>참가 <strong>${esc(s.playerName)}</strong></span>
+          <span>점수 <strong>${s.score}</strong></span>
+        </div>
+        ${quizStageUpHtml(g.stageUp)}`;
+      return;
+    }
+    if (g.loading) {
+      root.innerHTML = `<div class="poke-card"><p class="hint">퀴즈를 불러오는 중… (${esc(s.playerName)} · ${s.round + 1}번째)</p></div>`;
+      return;
+    }
+    if (g.error) {
+      root.innerHTML = `<div class="poke-card">
+        <p class="hint">${esc(g.error)}</p>
+        <button class="primary" type="button" id="ox-retry-btn">다시 불러오기</button>
+        <button type="button" id="ox-back-setup">참가자 선택</button>
+      </div>`;
+      return;
+    }
+    if (!g.answer || !g.question) {
+      root.innerHTML = `<div class="poke-card"><p class="hint">문제를 준비하는 중…</p></div>`;
+      return;
+    }
+    const sessionEnded = g.answered && s.wrongCount >= QUIZ_MAX_WRONG;
+    const limitSec = quizSecondsForRound(s.round);
+    const cardFx = [
+      g.feedback ? `poke-card--${g.feedback}` : "",
+      !g.answered && g.countdown <= Math.min(2, limitSec) ? "poke-card--urgent" : "",
+      sessionEnded ? "poke-card--fail" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const countdownHtml = g.answered
+      ? ""
+      : `<span class="poke-countdown${g.countdown <= Math.min(2, limitSec) ? " is-warn" : ""}" id="ox-countdown">${g.countdown || limitSec}초</span>`;
+    const scoreFx = g.feedback === "correct" ? " poke-score-pop" : "";
+    const choiceCls = (val) => {
+      let cls = `ox-choice ${val === "True" ? "ox-choice-o" : "ox-choice-x"}`;
+      if (g.answered) {
+        if (val === g.answer) cls += " is-correct";
+        else if (val === g.picked) cls += " is-wrong";
+        else cls += " is-dim";
+      }
+      return cls;
+    };
+    const meta = [g.category, g.difficulty].filter(Boolean).join(" · ");
+    root.innerHTML = `
+      <div class="poke-scorebar">
+        <span>참가 <strong>${esc(s.playerName)}</strong></span>
+        <span>단계 <strong>${quizStageNumber(s.round)}</strong></span>
+        <span>문제 <strong>${s.round + 1}</strong>번째</span>
+        <span class="poke-score${scoreFx}">점수 <strong>${s.score}</strong></span>
+        ${countdownHtml}
+      </div>
+      <div class="poke-card ${cardFx}">
+        <div class="ox-stage">
+          ${meta ? `<p class="ox-meta">${esc(meta)}</p>` : ""}
+          <p class="ox-question${g.feedback === "correct" ? " is-pop" : g.feedback === "wrong" ? " is-shake" : ""}">${esc(g.question)}</p>
+        </div>
+        <p class="poke-prompt">${g.answered ? `정답은 <strong>${oxAnswerLabel(g.answer)}</strong>!` : "O(참) 또는 X(거짓)을 골라 주세요"}</p>
+        ${g.message ? `<p class="poke-message poke-message--${g.feedback || "idle"}">${esc(g.message)}</p>` : ""}
+        <div class="ox-choices">
+          <button type="button" class="${choiceCls("True")}" data-ox-choice="True" ${g.answered ? "disabled" : ""}>O<br/><small>참</small></button>
+          <button type="button" class="${choiceCls("False")}" data-ox-choice="False" ${g.answered ? "disabled" : ""}>X<br/><small>거짓</small></button>
+        </div>
+      </div>`;
+  }
+
+  function resetOxToSetup() {
+    clearOxTimer();
+    clearOxAdvance();
+    state.oxSession = {
+      phase: "setup",
+      playerId: state.oxSession.playerId || "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    };
+    state.oxGame.answer = null;
+    state.oxGame.question = "";
+    state.oxGame.error = "";
+    state.oxGame.loading = false;
+    state.oxGame.stageUp = null;
+    renderOxGame();
+  }
+
+  function startOxSession(playerId, customName) {
+    const opt = POKE_PLAYER_OPTIONS.find((p) => p.id === playerId) || POKE_PLAYER_OPTIONS[0];
+    let playerName = opt.name;
+    if (playerId === "other") {
+      playerName = String(customName || "").trim();
+      if (!playerName) return toast("기타를 선택했으면 이름을 입력해 주세요.");
+    }
+    state.oxSession = {
+      phase: "playing",
+      playerId,
+      playerName,
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    };
+    loadOxQuestion();
+  }
+
+  function endOxSession() {
+    const s = state.oxSession;
+    if (s.phase !== "playing") return;
+    clearOxTimer();
+    clearOxAdvance();
+    if (!s.endReason) s.endReason = "fail";
+    addOxRankEntry({
+      name: s.playerName,
+      score: s.score,
+      rounds: s.round,
+      reason: s.endReason,
+      at: new Date().toISOString(),
+    });
+    s.phase = "ended";
+    state.oxGame.answer = null;
+    state.oxGame.question = "";
+    renderOxGame();
+  }
+
+  async function loadOxQuestion() {
+    const g = state.oxGame;
+    const s = state.oxSession;
+    if (s.phase !== "playing") return;
+    clearOxTimer();
+    clearOxAdvance();
+    g.loading = true;
+    g.error = "";
+    g.message = "";
+    g.feedback = "";
+    g.answered = false;
+    g.picked = null;
+    g.question = "";
+    g.answer = null;
+    g.stageUp = null;
+    renderOxGame();
+    try {
+      if (oxQueue.length < 3) await refillOxQueue();
+      if (!oxQueue.length) await refillOxQueue();
+      const next = oxQueue.shift();
+      if (!next) throw new Error("문제가 더 없어요. 잠시 후 다시 시도해 주세요.");
+      g.question = next.question;
+      g.answer = next.answer;
+      g.category = next.category;
+      g.difficulty = next.difficulty;
+      g.loading = false;
+      renderOxGame();
+      startOxTimer();
+      if (oxQueue.length < 3) refillOxQueue().catch(() => {});
+    } catch (err) {
+      g.loading = false;
+      g.answer = null;
+      g.error = err.message || String(err);
+      renderOxGame();
+    }
+  }
+
+  function pickOxChoice(value) {
+    const g = state.oxGame;
+    const s = state.oxSession;
+    if (s.phase !== "playing" || !g.answer || g.answered) return;
+    const picked = value === "True" ? "True" : "False";
+    resolveOxAnswer(picked === g.answer, picked);
+  }
+
   function setActiveGame(gameId) {
-    const next = gameId === "times" ? "times" : gameId === "poke" ? "poke" : null;
+    const next = gameId === "times" || gameId === "poke" || gameId === "ox" ? gameId : null;
     if (state.activeGame === next) {
       renderGameTab();
       return;
@@ -2924,6 +3471,11 @@
       clearTimesTimer();
       clearTimesAdvance();
     }
+    if (state.oxSession.phase === "playing") resetOxToSetup();
+    else {
+      clearOxTimer();
+      clearOxAdvance();
+    }
     state.activeGame = next;
     renderGameTab();
   }
@@ -2933,14 +3485,19 @@
     const menu = $("#game-menu");
     const pokePanel = $("#game-panel-poke");
     const timesPanel = $("#game-panel-times");
-    if (menu) menu.hidden = active === "poke" || active === "times";
+    const oxPanel = $("#game-panel-ox");
+    const inGame = active === "poke" || active === "times" || active === "ox";
+    if (menu) menu.hidden = inGame;
     if (pokePanel) pokePanel.hidden = active !== "poke";
     if (timesPanel) timesPanel.hidden = active !== "times";
+    if (oxPanel) oxPanel.hidden = active !== "ox";
     if (active === "poke") {
       renderPokeGame();
       ensurePokeNamePool();
     } else if (active === "times") {
       renderTimesGame();
+    } else if (active === "ox") {
+      renderOxGame();
     }
   }
 
@@ -3359,6 +3916,17 @@
           state.timesSession.wrongCount = 0;
           state.timesGame.answer = null;
         }
+        if (state.oxSession.phase === "playing") {
+          clearOxTimer();
+          clearOxAdvance();
+          state.oxSession.phase = "setup";
+          state.oxSession.round = 0;
+          state.oxSession.score = 0;
+          state.oxSession.wrongCount = 0;
+          state.oxGame.answer = null;
+          state.oxGame.question = "";
+          state.oxGame.stageUp = null;
+        }
         state.activeGame = null;
       }
       render();
@@ -3530,7 +4098,9 @@
       if (e.target.id === "poke-open-rank" || e.target.closest(".poke-open-rank-btn")) openPokeRankModal();
       const pokeChoice = e.target.closest("[data-poke-choice]");
       if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
-      if (e.target.id === "game-back-menu" || e.target.id === "game-back-menu-times") setActiveGame(null);
+      if (e.target.id === "game-back-menu" || e.target.id === "game-back-menu-times" || e.target.id === "game-back-menu-ox") {
+        setActiveGame(null);
+      }
       const gamePick = e.target.closest("[data-game]");
       if (gamePick && (gamePick.classList.contains("game-menu-btn") || gamePick.classList.contains("game-pick-btn"))) {
         setActiveGame(gamePick.dataset.game);
@@ -3545,6 +4115,17 @@
       if (e.target.id === "times-open-rank" || e.target.closest(".times-open-rank-btn")) openTimesRankModal();
       const timesChoice = e.target.closest("[data-times-choice]");
       if (timesChoice) pickTimesChoice(timesChoice.dataset.timesChoice);
+      if (e.target.id === "ox-start-session") {
+        const form = document.getElementById("ox-setup-form");
+        if (!form) return;
+        const fd = new FormData(form);
+        startOxSession(fd.get("playerId") || "jaesang", fd.get("customName"));
+      }
+      if (e.target.id === "ox-retry-btn") loadOxQuestion();
+      if (e.target.id === "ox-back-setup" || e.target.id === "ox-play-again") resetOxToSetup();
+      if (e.target.id === "ox-open-rank" || e.target.closest(".ox-open-rank-btn")) openOxRankModal();
+      const oxChoice = e.target.closest("[data-ox-choice]");
+      if (oxChoice) pickOxChoice(oxChoice.dataset.oxChoice);
       if (e.target.id === "save-rates") {
         const form = document.getElementById("rates-form");
         if (form) saveCategoriesFromForm(form);
@@ -3728,6 +4309,11 @@
         const wrap = $("#times-other-wrap");
         if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
       }
+      if (e.target.name === "playerId" && e.target.closest("#ox-setup-form")) {
+        state.oxSession.playerId = e.target.value;
+        const wrap = $("#ox-other-wrap");
+        if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
+      }
       if (e.target.name === "allDay") {
         const wrap = $("#time-fields");
         if (wrap) wrap.style.display = e.target.checked ? "none" : "";
@@ -3816,6 +4402,7 @@
     if (!isFirebaseConfigured()) {
       state.pokeRank = readLocalPokeRank();
       state.timesRank = readLocalTimesRank();
+      state.oxRank = readLocalOxRank();
     } else if (migrateLocalPokeRankIfNeeded()) {
       save();
     }
