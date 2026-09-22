@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=38" />
+  <link rel="stylesheet" href="styles.css?v=39" />
 </head>
 <body>
   <div class="app">
@@ -96,26 +96,30 @@
     </section>
 
     <section id="view-game" class="view">
-      <div class="game-picker" role="tablist" aria-label="게임 선택">
-        <button type="button" class="game-pick-btn is-active" data-game="poke">포켓몬</button>
-        <button type="button" class="game-pick-btn" data-game="times">구구단</button>
+      <div id="game-menu" class="game-menu">
+        <h2 class="talk-heading">어떤 게임을 할까요?</h2>
+        <p class="hint">정답 10점 · 1회 틀리면 탈락 · 단계마다 제한시간이 짧아집니다 (5초→4초→3초→2초→1초).</p>
+        <div class="game-menu-actions">
+          <button type="button" class="primary game-menu-btn" data-game="poke">포켓몬 이름 맞추기</button>
+          <button type="button" class="primary game-menu-btn" data-game="times">구구단 맞추기</button>
+        </div>
       </div>
 
-      <div id="game-panel-poke" class="game-panel">
+      <div id="game-panel-poke" class="game-panel" hidden>
         <div class="toolbar">
           <h2 class="talk-heading">포켓몬 이름 맞추기</h2>
-          <button id="poke-open-rank" class="poke-open-rank-btn" type="button">순위 보기</button>
+          <button id="game-back-menu" type="button">게임 선택</button>
         </div>
-        <p class="hint">참가자를 고르고 문제를 풀어 보세요. 문제당 5초, 2회 틀리면 탈락합니다. 정답이면 바로 다음 문제로 넘어갑니다.</p>
+        <p class="hint">참가자를 고르고 문제를 풀어 보세요. 정답이면 바로 다음 문제로 넘어갑니다.</p>
         <div id="poke-game-root" class="poke-game-root"></div>
       </div>
 
       <div id="game-panel-times" class="game-panel" hidden>
         <div class="toolbar">
           <h2 class="talk-heading">구구단 맞추기</h2>
-          <button id="times-open-rank" class="times-open-rank-btn" type="button">순위 보기</button>
+          <button id="game-back-menu-times" type="button">게임 선택</button>
         </div>
-        <p class="hint">참가자를 고르고 구구단 문제를 풀어 보세요. 문제당 3초, 1회 틀리면 탈락합니다. 정답이면 바로 다음 문제로 넘어갑니다.</p>
+        <p class="hint">참가자를 고르고 구구단 문제를 풀어 보세요. 정답이면 바로 다음 문제로 넘어갑니다.</p>
         <div id="times-game-root" class="poke-game-root"></div>
       </div>
     </section>
@@ -174,7 +178,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=38"></script>
-  <script src="app.js?v=38"></script>
+  <script src="firebase-config.js?v=39"></script>
+  <script src="app.js?v=39"></script>
 </body>
 </html>
