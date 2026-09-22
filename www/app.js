@@ -61,10 +61,27 @@
   const TIMES_MIN = 2;
   const TIMES_MAX = 9;
   const OX_RANK_KEY = "family-hub-ox-rank";
-  const OX_API = "https://opentdb.com/api.php";
-  const OX_TOKEN_API = "https://opentdb.com/api_token.php";
-  const OX_FETCH_AMOUNT = 10;
-  const OX_RATE_MS = 5200;
+  const OX_FETCH_AMOUNT = 6;
+  const POKE_TYPE_KO = {
+    normal: "노말",
+    fire: "불꽃",
+    water: "물",
+    grass: "풀",
+    electric: "전기",
+    ice: "얼음",
+    fighting: "격투",
+    poison: "독",
+    ground: "땅",
+    flying: "비행",
+    psychic: "에스퍼",
+    bug: "벌레",
+    rock: "바위",
+    ghost: "고스트",
+    dragon: "드래곤",
+    dark: "악",
+    steel: "강철",
+    fairy: "페어리",
+  };
   const TODO_PAST_DAYS = 2;
   const TODO_FUTURE_DAYS = 5;
   const TODO_MORE_STEP = 5;
@@ -193,8 +210,6 @@
   let oxTimerId = null;
   let oxAdvanceTimeout = null;
   let oxQueue = [];
-  let oxToken = "";
-  let oxLastFetchAt = 0;
   let oxFetchPromise = null;
   let schoolLunchPromise = null;
   let familyRef = null;
@@ -2959,99 +2974,157 @@
     resolveTimesAnswer(n === g.answer, n);
   }
 
-  function decodeOxText(raw) {
-    try {
-      return decodeURIComponent(String(raw || "").replace(/\+/g, "%20"));
-    } catch (_) {
-      return String(raw || "");
-    }
-  }
-
   function oxAnswerLabel(answer) {
     return answer === "True" ? "O · 참" : "X · 거짓";
   }
 
-  async function ensureOxToken() {
-    if (oxToken) return oxToken;
-    const res = await fetch(`${OX_TOKEN_API}?command=request`);
-    if (!res.ok) throw new Error("퀴즈 서버에 연결하지 못했어요.");
-    const data = await res.json();
-    if (data.response_code === 0 && data.token) {
-      oxToken = data.token;
-      return oxToken;
-    }
-    return "";
+  function pokeNameKoById(id) {
+    return state.pokeNamePool.find((p) => p.id === id)?.nameKo || `도감 ${id}번`;
   }
 
-  async function waitOxRateLimit() {
-    if (!oxLastFetchAt) return;
-    const wait = OX_RATE_MS - (Date.now() - oxLastFetchAt);
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  async function fetchPokemonForOx(id) {
+    const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+    if (!res.ok) throw new Error(`포켓몬 ${id}번을 불러오지 못했어요.`);
+    return res.json();
+  }
+
+  function buildOxFromPokemon(poke) {
+    const id = Number(poke.id);
+    const name = pokeNameKoById(id);
+    const types = (poke.types || []).map((t) => t.type?.name).filter(Boolean);
+    const typeKoList = types.map((t) => POKE_TYPE_KO[t] || t);
+    const heightM = (Number(poke.height) / 10).toFixed(1);
+    const weightKg = (Number(poke.weight) / 10).toFixed(1);
+    const hp = poke.stats?.find((s) => s.stat?.name === "hp")?.base_stat;
+    const allTypes = Object.values(POKE_TYPE_KO);
+
+    const makers = [
+      () => {
+        let shown = id;
+        let truth = true;
+        if (Math.random() < 0.5) {
+          truth = false;
+          do {
+            shown = randInt(1, POKE_MAX_ID);
+          } while (shown === id);
+        }
+        return {
+          question: `${name}의 전국도감 번호는 ${shown}번이다.`,
+          answer: truth ? "True" : "False",
+          category: "도감 번호",
+          difficulty: "",
+        };
+      },
+      () => {
+        const real = typeKoList[0] || "노말";
+        let shown = real;
+        let truth = true;
+        if (Math.random() < 0.5) {
+          const others = allTypes.filter((t) => !typeKoList.includes(t));
+          shown = others[randInt(0, others.length - 1)] || "페어리";
+          truth = false;
+        }
+        return {
+          question: `${name}의 타입에 「${shown}」이(가) 있다.`,
+          answer: truth ? "True" : "False",
+          category: "타입",
+          difficulty: "",
+        };
+      },
+      () => {
+        const dual = types.length >= 2;
+        if (Math.random() < 0.5) {
+          return {
+            question: `${name}은(는) 타입이 두 개이다.`,
+            answer: dual ? "True" : "False",
+            category: "타입",
+            difficulty: "",
+          };
+        }
+        return {
+          question: `${name}은(는) 타입이 한 개뿐이다.`,
+          answer: dual ? "False" : "True",
+          category: "타입",
+          difficulty: "",
+        };
+      },
+      () => {
+        let shown = heightM;
+        let truth = true;
+        if (Math.random() < 0.5) {
+          truth = false;
+          const delta = [0.3, 0.5, 1.0, 1.5][randInt(0, 3)];
+          const next = Math.max(0.1, Number(heightM) + (Math.random() < 0.5 ? delta : -delta));
+          shown = next.toFixed(1);
+          if (shown === heightM) shown = (Number(heightM) + 0.5).toFixed(1);
+        }
+        return {
+          question: `${name}의 키는 ${shown}m이다.`,
+          answer: truth ? "True" : "False",
+          category: "키",
+          difficulty: "",
+        };
+      },
+      () => {
+        let shown = weightKg;
+        let truth = true;
+        if (Math.random() < 0.5) {
+          truth = false;
+          const delta = [2, 5, 10, 20][randInt(0, 3)];
+          const next = Math.max(0.1, Number(weightKg) + (Math.random() < 0.5 ? delta : -delta));
+          shown = next.toFixed(1);
+          if (shown === weightKg) shown = (Number(weightKg) + 3).toFixed(1);
+        }
+        return {
+          question: `${name}의 몸무게는 ${shown}kg이다.`,
+          answer: truth ? "True" : "False",
+          category: "몸무게",
+          difficulty: "",
+        };
+      },
+      () => {
+        if (!Number.isFinite(hp)) {
+          return {
+            question: `${name}은(는) 1세대 포켓몬이다.`,
+            answer: id <= 151 ? "True" : "False",
+            category: "세대",
+            difficulty: "",
+          };
+        }
+        let shown = hp;
+        let truth = true;
+        if (Math.random() < 0.5) {
+          truth = false;
+          do {
+            shown = Math.max(1, hp + randInt(-30, 30));
+          } while (shown === hp);
+        }
+        return {
+          question: `${name}의 기초 HP는 ${shown}이다.`,
+          answer: truth ? "True" : "False",
+          category: "능력치",
+          difficulty: "",
+        };
+      },
+    ];
+    return makers[randInt(0, makers.length - 1)]();
+  }
+
+  async function makeOneOxQuestion() {
+    await ensurePokeNamePool();
+    const id = randInt(1, POKE_MAX_ID);
+    const poke = await fetchPokemonForOx(id);
+    return buildOxFromPokemon(poke);
   }
 
   async function refillOxQueue() {
-    if (oxQueue.length >= 5) return;
+    if (oxQueue.length >= 4) return;
     if (oxFetchPromise) return oxFetchPromise;
     oxFetchPromise = (async () => {
-      await waitOxRateLimit();
-      await ensureOxToken();
-      const tokenQ = oxToken ? `&token=${encodeURIComponent(oxToken)}` : "";
-      const url = `${OX_API}?amount=${OX_FETCH_AMOUNT}&type=boolean&encode=url3986${tokenQ}`;
-      oxLastFetchAt = Date.now();
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("퀴즈를 불러오지 못했어요.");
-      const data = await res.json();
-      if (data.response_code === 4 && oxToken) {
-        await waitOxRateLimit();
-        oxLastFetchAt = Date.now();
-        await fetch(`${OX_TOKEN_API}?command=reset&token=${encodeURIComponent(oxToken)}`);
-        await waitOxRateLimit();
-        oxLastFetchAt = Date.now();
-        const retry = await fetch(url);
-        const again = await retry.json();
-        if (again.response_code !== 0 || !Array.isArray(again.results)) {
-          throw new Error("퀴즈 문항을 모두 소진했어요. 다시 시작해 주세요.");
-        }
-        again.results.forEach((q) => {
-          oxQueue.push({
-            question: decodeOxText(q.question),
-            answer: q.correct_answer === "True" ? "True" : "False",
-            category: decodeOxText(q.category),
-            difficulty: String(q.difficulty || ""),
-          });
-        });
-        return;
-      }
-      if (data.response_code === 5) {
-        await new Promise((r) => setTimeout(r, OX_RATE_MS));
-        oxLastFetchAt = Date.now();
-        const retryRes = await fetch(url);
-        if (!retryRes.ok) throw new Error("퀴즈를 불러오지 못했어요.");
-        const retryData = await retryRes.json();
-        if (retryData.response_code !== 0 || !Array.isArray(retryData.results) || !retryData.results.length) {
-          throw new Error("요청이 너무 많아요. 잠시 후 다시 시작해 주세요.");
-        }
-        retryData.results.forEach((q) => {
-          oxQueue.push({
-            question: decodeOxText(q.question),
-            answer: q.correct_answer === "True" ? "True" : "False",
-            category: decodeOxText(q.category),
-            difficulty: String(q.difficulty || ""),
-          });
-        });
-        return;
-      }
-      if (data.response_code !== 0 || !Array.isArray(data.results) || !data.results.length) {
-        throw new Error("퀴즈 문제가 없어요. 잠시 후 다시 시도해 주세요.");
-      }
-      data.results.forEach((q) => {
-        oxQueue.push({
-          question: decodeOxText(q.question),
-          answer: q.correct_answer === "True" ? "True" : "False",
-          category: decodeOxText(q.category),
-          difficulty: String(q.difficulty || ""),
-        });
-      });
+      const need = Math.max(OX_FETCH_AMOUNT - oxQueue.length, 3);
+      const batch = await Promise.all(Array.from({ length: need }, () => makeOneOxQuestion().catch(() => null)));
+      batch.filter(Boolean).forEach((q) => oxQueue.push(q));
+      if (!oxQueue.length) throw new Error("포켓몬 OX 문제를 만들지 못했어요.");
     })().finally(() => {
       oxFetchPromise = null;
     });
@@ -3216,7 +3289,7 @@
   function openOxRankModal() {
     openModal(`
       <div class="poke-rank-modal">
-        <h3 class="poke-setup-title">스피드 OX Rank TOP ${QUIZ_RANK_TOP}</h3>
+        <h3 class="poke-setup-title">포켓몬 OX Rank TOP ${QUIZ_RANK_TOP}</h3>
         <p class="hint">가족 공유 순위입니다. 점수가 높은 순으로 보여요.</p>
         <ol class="poke-rank-list">${oxRankListHtml()}</ol>
         <div class="modal-actions">
@@ -3244,7 +3317,7 @@
             이름
             <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
           </label>
-          <p class="hint">${quizRulesHintHtml()}<br/>영어 참/거짓 · Open Trivia DB</p>
+          <p class="hint">${quizRulesHintHtml()}<br/>포켓몬 정보로 만든 한국어 참/거짓 퀴즈</p>
           <div class="poke-actions">
             <button class="primary" type="button" id="ox-start-session">게임 시작</button>
             <button class="primary ox-open-rank-btn" type="button">순위 보기</button>
@@ -3292,7 +3365,7 @@
       return;
     }
     if (g.loading) {
-      root.innerHTML = `<div class="poke-card"><p class="hint">퀴즈를 불러오는 중… (${esc(s.playerName)} · ${s.round + 1}번째)</p></div>`;
+      root.innerHTML = `<div class="poke-card"><p class="hint">포켓몬 퀴즈를 불러오는 중… (${esc(s.playerName)} · ${s.round + 1}번째)</p></div>`;
       return;
     }
     if (g.error) {
@@ -3498,6 +3571,7 @@
       renderTimesGame();
     } else if (active === "ox") {
       renderOxGame();
+      ensurePokeNamePool();
     }
   }
 
