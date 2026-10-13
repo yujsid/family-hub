@@ -15,12 +15,12 @@
   ];
   const PERSON_EMOJI = { 아빠: "👨", 엄마: "👩", 딸: "👧", 아들: "👦" };
   const VEGGIES = {
-    jaesang: { veg: "브로콜리", badge: "아빠", img: "img/char-broccoli.jpg", tone: "#4f8a3c", bg: "#e7f1dc", desc: "든든하고 책임감 있는\n우리 가족의 든든한 버팀목" },
-    sinjeong: { veg: "당근", badge: "엄마", img: "img/char-carrot.jpg", tone: "#e0761c", bg: "#fdebd5", desc: "따뜻하고 다정한\n우리 가족의 에너지원" },
-    sua: { veg: "토마토", badge: "첫째", img: "img/char-tomato.jpg", tone: "#d8432e", bg: "#fde2dc", desc: "밝고 활발한\n우리 가족의 분위기 메이커" },
-    sumin: { veg: "양상추", badge: "둘째", img: "img/char-lettuce.jpg", tone: "#5f9a2e", bg: "#ebf4d8", desc: "순수하고 엉뚱한\n우리 가족의 귀염둥이" },
-    peanut: { veg: "땅콩", badge: "게코", img: "img/char-peanut.jpg", tone: "#a8732f", bg: "#f6ebd8", desc: "작지만 고소한\n우리 집 숨은 매력둥이" },
-    chilbok: { veg: "가지", badge: "막내", img: "img/char-eggplant.jpg", tone: "#7b4fa8", bg: "#eee4f7", desc: "자유롭고 섬세한\n우리 집 막내 감성가" },
+    jaesang: { veg: "땅콩", badge: "아빠", img: "img/char-peanut-dad.jpg", tone: "#a06a24", bg: "#fbefd6", desc: "든든하고 책임감 있는\n우리 가족의 든든한 버팀목" },
+    sinjeong: { veg: "고구마", badge: "엄마", img: "img/char-sweetpotato.jpg", tone: "#c0476d", bg: "#fce3e8", desc: "따뜻하고 다정한\n우리 가족의 에너지원" },
+    sua: { veg: "수박", badge: "딸", img: "img/char-watermelon.jpg", tone: "#3f8a3a", bg: "#e4f2dc", desc: "밝고 활발한\n우리 가족의 분위기 메이커" },
+    sumin: { veg: "양파", badge: "아들", img: "img/char-onion.jpg", tone: "#3a67a3", bg: "#e2ebf8", desc: "순수하고 엉뚱한\n우리 가족의 귀염둥이" },
+    peanut: { veg: "크레스티드 게코", badge: "반려동물", img: "img/char-gecko.jpg", tone: "#b07f16", bg: "#fdf2cf", desc: "조용하지만 특별한\n우리 가족의 작은 친구" },
+    chilbok: { veg: "실버푸들", badge: "반려동물", img: "img/char-poodle.jpg", tone: "#7656a8", bg: "#ece6f7", desc: "사랑스럽고 든든한\n우리 가족의 힐링 친구" },
   };
   const NAV_ICONS = {
     home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h5v-5.5h3V20h5V9.5"/>',
@@ -2209,7 +2209,7 @@
       .join("");
     openModal(`
       <div class="pet-weight-modal profile-modal" data-pet-modal="${pet.id}">
-        ${introProfileHead(pet.id, pet.name, `${VEGGIES[pet.id].veg} · ${info.breed}`)}
+        ${introProfileHead(pet.id, pet.name, info.breed)}
         <dl class="pet-facts">
           <div><dt>생일</dt><dd>${formatPetDate(info.birthDate)}</dd></div>
           <div><dt>태어난 지</dt><dd class="pet-dday">${petDayLabel(info.birthDate)}${info.birthDate ? "일" : ""}</dd></div>
@@ -3976,6 +3976,7 @@
   function render() {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
     document.querySelectorAll(".drawer-item").forEach((t) => t.classList.toggle("is-active", t.dataset.goTab === state.tab));
+    document.body.dataset.tab = state.tab;
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${state.tab}`));
     renderTypeFilters();
     renderMemberFilters();

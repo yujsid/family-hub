@@ -1,11 +1,12 @@
-const CACHE = "family-hub-v45";
+const CACHE = "family-hub-v46";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./theme-veggie.css",
-  "./img/splash.jpg",
-  "./img/hero.jpg",
+  "./img/splash-family.jpg",
+  "./img/home-portrait.jpg",
+  "./img/home-wide.jpg",
   "./app.js",
   "./firebase-config.js",
   "./manifest.webmanifest",

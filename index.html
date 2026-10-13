@@ -21,8 +21,8 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=45" />
-  <link rel="stylesheet" href="theme-veggie.css?v=45" />
+  <link rel="stylesheet" href="styles.css?v=46" />
+  <link rel="stylesheet" href="theme-veggie.css?v=46" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -47,7 +47,10 @@
         </button>
       </div>
       <nav id="drawer-nav" class="drawer-nav"></nav>
-      <p class="drawer-foot">🌱 채소처럼 건강하고,<br />가족처럼 따뜻하게!</p>
+      <div class="drawer-foot">
+        <p>우리 가족과<br />언제나 함께해요!</p>
+        <span class="drawer-mascot"><img src="img/char-gecko.jpg" alt="" loading="lazy" /></span>
+      </div>
     </aside>
   </div>
 
@@ -65,13 +68,15 @@
 
     <section id="view-home" class="view">
       <div class="home-hero">
+        <picture>
+          <source media="(min-width: 821px)" srcset="img/home-wide.jpg" />
+          <img class="home-hero-img" src="img/home-portrait.jpg" alt="땅콩 아빠, 고구마 엄마, 수박 딸, 양파 아들, 크레스티드 게코와 실버푸들이 정원에 모여 있는 그림" />
+        </picture>
         <div class="home-copy">
-          <p class="home-script">우리 가족은<br />각자 다른 매력을 가진 채소예요!</p>
-          <h2 class="veggie-wordmark home-title"><span class="wm-green">채소가족</span><span class="wm-orange">허브</span></h2>
-          <p class="home-desc">가족의 개성과 매력을 채소에 비유한<br />우리 가족만의 특별한 이야기</p>
-          <button type="button" class="veggie-cta" data-go-tab="intro">우리 가족 알아보기 <span aria-hidden="true">→</span></button>
+          <h2 class="home-script">우리 가족은<br />각자 다른 매력을 가진<br />채소예요! <span class="home-heart" aria-hidden="true">♡</span></h2>
+          <p class="home-desc">땅콩 아빠, 고구마 엄마,<br />수박 딸, 양파 아들과<br />그리고 크레스티드 게코와 실버푸들!</p>
         </div>
-        <img class="home-hero-img" src="img/hero.jpg" alt="브로콜리, 당근, 토마토, 양상추, 가지, 땅콩 캐릭터가 모여 있는 그림" />
+        <button type="button" class="veggie-cta home-cta" data-go-tab="intro">우리 가족 알아보기 <span aria-hidden="true">→</span></button>
       </div>
     </section>
 
@@ -243,7 +248,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=45"></script>
-  <script src="app.js?v=45"></script>
+  <script src="firebase-config.js?v=46"></script>
+  <script src="app.js?v=46"></script>
 </body>
 </html>
