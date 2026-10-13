@@ -1854,6 +1854,7 @@ input[type="radio"] {
     gap: 6px;
     margin-bottom: 10px;
   }
+  .filters-bar > * { min-width: 0; }
   .type-filters,
   .member-filters {
     flex-wrap: nowrap;
@@ -1870,7 +1871,18 @@ input[type="radio"] {
     flex: 1 1 0;
     min-width: 0;
     padding: 6px 4px;
+    gap: 3px;
+    justify-content: center;
+    overflow: hidden;
   }
+  .type-filters .chip input,
+  .member-filters .chip input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    flex: none;
+  }
+  .member-filters .chip .dot { flex: none; width: 8px; height: 8px; }
   .type-mark { display: none; }
   .calendar { width: 100%; }
   .weekdays span {

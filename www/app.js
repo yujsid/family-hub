@@ -14,7 +14,36 @@
     { id: "chilbok", name: "칠복이", emoji: "🐩", defaultBreed: "실버 토이푸들", unit: "kg", step: "0.01", color: "#8f86b8" },
   ];
   const PERSON_EMOJI = { 아빠: "👨", 엄마: "👩", 딸: "👧", 아들: "👦" };
-  const TABS = ["intro", "calendar", "todos", "stamps", "talk", "game", "settings"];
+  const VEGGIES = {
+    jaesang: { veg: "브로콜리", badge: "아빠", img: "img/char-broccoli.jpg", tone: "#4f8a3c", bg: "#e7f1dc", desc: "든든하고 책임감 있는\n우리 가족의 든든한 버팀목" },
+    sinjeong: { veg: "당근", badge: "엄마", img: "img/char-carrot.jpg", tone: "#e0761c", bg: "#fdebd5", desc: "따뜻하고 다정한\n우리 가족의 에너지원" },
+    sua: { veg: "토마토", badge: "첫째", img: "img/char-tomato.jpg", tone: "#d8432e", bg: "#fde2dc", desc: "밝고 활발한\n우리 가족의 분위기 메이커" },
+    sumin: { veg: "양상추", badge: "둘째", img: "img/char-lettuce.jpg", tone: "#5f9a2e", bg: "#ebf4d8", desc: "순수하고 엉뚱한\n우리 가족의 귀염둥이" },
+    peanut: { veg: "땅콩", badge: "게코", img: "img/char-peanut.jpg", tone: "#a8732f", bg: "#f6ebd8", desc: "작지만 고소한\n우리 집 숨은 매력둥이" },
+    chilbok: { veg: "가지", badge: "막내", img: "img/char-eggplant.jpg", tone: "#7b4fa8", bg: "#eee4f7", desc: "자유롭고 섬세한\n우리 집 막내 감성가" },
+  };
+  const NAV_ICONS = {
+    home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h5v-5.5h3V20h5V9.5"/>',
+    intro: '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.8-3.5 3.3-5.4 6.2-5.4s5.4 1.9 6.2 5.4"/><circle cx="17" cy="9" r="2.5"/><path d="M16.6 14.6c2.5.2 4.1 2 4.7 5.4"/>',
+    calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    todos: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="m8.5 12.2 2.4 2.4 4.8-5"/>',
+    stamps: '<circle cx="12" cy="12" r="8.5"/><path d="m8 9 1.9 6.2L12 10l2.1 5.2L16 9M7.5 12h9"/>',
+    talk: '<path d="M5 4.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8.5L6 20.5v-4H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z"/>',
+    game: '<rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4"/><circle cx="15.5" cy="11.5" r=".9"/><circle cx="18" cy="13.6" r=".9"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8"/>',
+  };
+  const NAV_ITEMS = [
+    { tab: "home", label: "홈" },
+    { tab: "intro", label: "가족소개" },
+    { tab: "calendar", label: "일정" },
+    { tab: "todos", label: "할일" },
+    { tab: "stamps", label: "용돈" },
+    { tab: "talk", label: "대화" },
+    { tab: "game", label: "게임" },
+    { tab: "settings", label: "설정", drawerOnly: true },
+  ];
+  const TABS = NAV_ITEMS.map((it) => it.tab);
+  const STARTED_SESSION_KEY = "family-hub-started";
   const TAB_SESSION_KEY = "family-hub-tab";
   const SETTINGS_UNLOCK_SESSION_KEY = "family-hub-settings-unlocked";
   const ALLOWANCE_MEMBERS = PEOPLE_MEMBERS.filter((m) => m.role === "딸" || m.role === "아들");
@@ -235,11 +264,11 @@
     try {
       let saved = sessionStorage.getItem(TAB_SESSION_KEY);
       if (saved === "pets") saved = "intro";
-      if (!TABS.includes(saved)) return "calendar";
-      if (saved === "settings" && !readSettingsUnlocked()) return "calendar";
+      if (!TABS.includes(saved)) return "home";
+      if (saved === "settings" && !readSettingsUnlocked()) return "home";
       return saved;
     } catch (_) {
-      return "calendar";
+      return "home";
     }
   }
 
@@ -2057,48 +2086,68 @@
   function renderIntro() {
     const root = $("#intro-root");
     if (!root) return;
+    const card = (id, name, meta) => {
+      const v = VEGGIES[id];
+      return `
+        <button type="button" class="intro-card" data-intro-card="${id}" style="--tone:${v.tone};--tone-bg:${v.bg}">
+          <span class="intro-char"><img src="${v.img}" alt="" loading="lazy" /></span>
+          <span class="intro-body">
+            <span class="intro-badge">${esc(v.badge)}</span>
+            <span class="intro-name">${esc(name)} <small>${esc(v.veg)}</small></span>
+            <span class="intro-desc">${esc(v.desc).replace("\n", "<br />")}</span>
+            ${meta ? `<span class="intro-meta">${meta}</span>` : ""}
+          </span>
+          <span class="intro-arrow" aria-hidden="true">→</span>
+        </button>`;
+    };
     const people = PEOPLE_MEMBERS.map((m) => {
       const info = state.profiles[m.id];
-      return `
-        <article class="pet-card" style="--pet:${m.color}">
-          <div class="pet-card-head">
-            <span class="pet-emoji" aria-hidden="true">${PERSON_EMOJI[m.role] || "🙂"}</span>
-            <div>
-              <h3 class="pet-name">${esc(m.shortName)}</h3>
-              <p class="pet-breed">${esc(m.role)}</p>
-            </div>
-          </div>
-          <dl class="pet-facts">
-            <div><dt>생일</dt><dd>${formatPetDate(info.birthDate)}</dd></div>
-            <div><dt>별명</dt><dd>${info.nickname ? esc(info.nickname) : "미입력"}</dd></div>
-            <div class="pet-fact-wide"><dt>취미</dt><dd>${info.hobby ? esc(info.hobby) : "미입력"}</dd></div>
-            <div><dt>태어난 지</dt><dd class="pet-dday">${petDayLabel(info.birthDate)}${info.birthDate ? "일" : ""}</dd></div>
-            <div><dt>다음 생일</dt><dd class="pet-dday">${nextBirthdayLabel(info.birthDate)}</dd></div>
-          </dl>
-        </article>`;
+      return card(m.id, m.shortName, info.birthDate ? `🎂 다음 생일 ${nextBirthdayLabel(info.birthDate)}` : "");
     }).join("");
     const pets = PETS.map((p) => {
       const info = state.pets[p.id];
       const latest = info.weights[info.weights.length - 1];
-      return `
-        <button type="button" class="pet-card" data-pet-card="${p.id}" style="--pet:${p.color}">
-          <div class="pet-card-head">
-            <span class="pet-emoji" aria-hidden="true">${p.emoji}</span>
-            <div>
-              <h3 class="pet-name">${esc(p.name)}</h3>
-              <p class="pet-breed">${esc(info.breed)}</p>
-            </div>
-          </div>
-          <dl class="pet-facts">
-            <div><dt>생일</dt><dd>${formatPetDate(info.birthDate)}</dd></div>
-            <div><dt>태어난 지</dt><dd class="pet-dday">${petDayLabel(info.birthDate)}${info.birthDate ? "일" : ""}</dd></div>
-            <div><dt>우리 집에 온 지</dt><dd class="pet-dday">${petDayLabel(info.adoptDate)}${info.adoptDate ? "일" : ""}</dd></div>
-            <div><dt>최근 체중</dt><dd>${latest ? `${formatPetWeight(p, latest.value)} <small>(${formatPetDate(latest.date)})</small>` : "기록 없음"}</dd></div>
-          </dl>
-          <span class="pet-card-cta">체중 기록 보기 ›</span>
-        </button>`;
+      const bits = [];
+      if (info.adoptDate) bits.push(`🏡 함께한 지 ${petDayLabel(info.adoptDate)}일`);
+      if (latest) bits.push(`⚖️ ${formatPetWeight(p, latest.value)}`);
+      return card(p.id, p.name, bits.join(" · "));
     }).join("");
     root.innerHTML = people + pets;
+  }
+
+  function introProfileHead(id, title, sub) {
+    const v = VEGGIES[id];
+    return `<div class="profile-head" style="--tone:${v.tone};--tone-bg:${v.bg}">
+        <span class="intro-char profile-char"><img src="${v.img}" alt="" /></span>
+        <div>
+          <span class="intro-badge">${esc(v.badge)}</span>
+          <h3 class="profile-name">${esc(title)}</h3>
+          <p class="profile-sub">${esc(sub)}</p>
+          <p class="profile-desc">${esc(v.desc).replace("\n", " ")}</p>
+        </div>
+      </div>`;
+  }
+
+  function openPersonProfile(memberId) {
+    const m = PEOPLE_MEMBERS.find((x) => x.id === memberId);
+    if (!m) return;
+    const info = state.profiles[m.id];
+    openModal(`
+      <div class="profile-modal">
+        ${introProfileHead(m.id, m.name, `${VEGGIES[m.id].veg} · ${m.role}`)}
+        <dl class="pet-facts">
+          <div><dt>생일</dt><dd>${formatPetDate(info.birthDate)}</dd></div>
+          <div><dt>별명</dt><dd>${info.nickname ? esc(info.nickname) : "미입력"}</dd></div>
+          <div class="pet-fact-wide"><dt>취미</dt><dd>${info.hobby ? esc(info.hobby) : "미입력"}</dd></div>
+          <div><dt>태어난 지</dt><dd class="pet-dday">${petDayLabel(info.birthDate)}${info.birthDate ? "일" : ""}</dd></div>
+          <div><dt>다음 생일</dt><dd class="pet-dday">${nextBirthdayLabel(info.birthDate)}</dd></div>
+        </dl>
+        <p class="hint">생일·별명·취미는 설정 &gt; 가족소개에서 바꿀 수 있어요.</p>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">닫기</button>
+        </div>
+      </div>
+    `);
   }
 
   function petWeightChartSvg(pet, weights) {
@@ -2159,8 +2208,15 @@
       )
       .join("");
     openModal(`
-      <div class="pet-weight-modal" data-pet-modal="${pet.id}">
-        <h3>${pet.emoji} ${esc(pet.name)} 체중 관리</h3>
+      <div class="pet-weight-modal profile-modal" data-pet-modal="${pet.id}">
+        ${introProfileHead(pet.id, pet.name, `${VEGGIES[pet.id].veg} · ${info.breed}`)}
+        <dl class="pet-facts">
+          <div><dt>생일</dt><dd>${formatPetDate(info.birthDate)}</dd></div>
+          <div><dt>태어난 지</dt><dd class="pet-dday">${petDayLabel(info.birthDate)}${info.birthDate ? "일" : ""}</dd></div>
+          <div><dt>우리 집에 온 날</dt><dd>${formatPetDate(info.adoptDate)}</dd></div>
+          <div><dt>우리 집에 온 지</dt><dd class="pet-dday">${petDayLabel(info.adoptDate)}${info.adoptDate ? "일" : ""}</dd></div>
+        </dl>
+        <h4 class="profile-section-title">${pet.emoji} 체중 관리</h4>
         ${petWeightChartSvg(pet, info.weights)}
         <form id="pet-weight-form" class="pet-weight-form" action="#" method="post">
           <input type="hidden" name="petId" value="${pet.id}" />
@@ -3919,6 +3975,7 @@
 
   function render() {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
+    document.querySelectorAll(".drawer-item").forEach((t) => t.classList.toggle("is-active", t.dataset.goTab === state.tab));
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${state.tab}`));
     renderTypeFilters();
     renderMemberFilters();
@@ -4294,6 +4351,102 @@
     render();
   }
 
+  async function goToTab(next) {
+    if (!TABS.includes(next)) return;
+    if (next === "settings" && !state.settingsUnlocked) {
+      const ok = await askPin("설정 잠금 해제");
+      if (!ok) {
+        toast("설정에 들어가려면 비밀번호가 필요해요.");
+        return;
+      }
+      setSettingsUnlocked();
+      toast("설정을 열었어요!");
+    }
+    state.tab = next;
+    if (next === "game") {
+      if (state.pokeSession.phase === "playing") {
+        clearPokeTimer();
+        clearPokeAdvance();
+        state.pokeSession.phase = "setup";
+        state.pokeSession.round = 0;
+        state.pokeSession.score = 0;
+        state.pokeSession.wrongCount = 0;
+        state.pokeGame.id = null;
+      }
+      if (state.timesSession.phase === "playing") {
+        clearTimesTimer();
+        clearTimesAdvance();
+        state.timesSession.phase = "setup";
+        state.timesSession.round = 0;
+        state.timesSession.score = 0;
+        state.timesSession.wrongCount = 0;
+        state.timesGame.answer = null;
+      }
+      if (state.oxSession.phase === "playing") {
+        clearOxTimer();
+        clearOxAdvance();
+        state.oxSession.phase = "setup";
+        state.oxSession.round = 0;
+        state.oxSession.score = 0;
+        state.oxSession.wrongCount = 0;
+        state.oxGame.answer = null;
+        state.oxGame.question = "";
+        state.oxGame.stageUp = null;
+      }
+      state.activeGame = null;
+    }
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function navIcon(name) {
+    return `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">${NAV_ICONS[name] || ""}</svg>`;
+  }
+
+  function renderNav() {
+    const tabs = $(".tabs");
+    if (tabs) {
+      tabs.innerHTML = NAV_ITEMS.filter((it) => !it.drawerOnly)
+        .map((it) => `<button class="tab" data-tab="${it.tab}" type="button">${navIcon(it.tab)}<span>${it.label}</span></button>`)
+        .join("");
+    }
+    const drawer = $("#drawer-nav");
+    if (drawer) {
+      drawer.innerHTML = NAV_ITEMS.map(
+        (it) =>
+          `${it.drawerOnly ? '<hr class="drawer-divider" />' : ""}<button type="button" class="drawer-item" data-go-tab="${it.tab}">${navIcon(it.tab)}<span>${it.label}</span></button>`
+      ).join("");
+    }
+  }
+
+  function openDrawer() {
+    const d = $("#nav-drawer");
+    if (!d) return;
+    d.hidden = false;
+    requestAnimationFrame(() => d.classList.add("is-open"));
+  }
+
+  function closeDrawer() {
+    const d = $("#nav-drawer");
+    if (!d || d.hidden) return;
+    d.classList.remove("is-open");
+    setTimeout(() => {
+      if (!d.classList.contains("is-open")) d.hidden = true;
+    }, 220);
+  }
+
+  function startFromSplash() {
+    try {
+      sessionStorage.setItem(STARTED_SESSION_KEY, "1");
+    } catch (_) {
+      /* ignore */
+    }
+    const splash = $("#splash");
+    if (splash) splash.classList.add("is-leaving");
+    setTimeout(() => document.documentElement.classList.add("started"), 450);
+    goToTab("home");
+  }
+
   function bind() {
     const on = (sel, event, handler) => {
       const el = typeof sel === "string" ? document.querySelector(sel) : sel;
@@ -4301,53 +4454,12 @@
       el.addEventListener(event, handler);
     };
 
-    on(".tabs", "click", async (e) => {
+    on(".tabs", "click", (e) => {
       const tab = e.target.closest(".tab");
-      if (!tab) return;
-      const next = tab.dataset.tab;
-      if (next === "settings" && !state.settingsUnlocked) {
-        const ok = await askPin("설정 잠금 해제");
-        if (!ok) {
-          toast("설정에 들어가려면 비밀번호가 필요해요.");
-          return;
-        }
-        setSettingsUnlocked();
-        toast("설정을 열었어요!");
-      }
-      state.tab = next;
-      if (next === "game") {
-        if (state.pokeSession.phase === "playing") {
-          clearPokeTimer();
-          clearPokeAdvance();
-          state.pokeSession.phase = "setup";
-          state.pokeSession.round = 0;
-          state.pokeSession.score = 0;
-          state.pokeSession.wrongCount = 0;
-          state.pokeGame.id = null;
-        }
-        if (state.timesSession.phase === "playing") {
-          clearTimesTimer();
-          clearTimesAdvance();
-          state.timesSession.phase = "setup";
-          state.timesSession.round = 0;
-          state.timesSession.score = 0;
-          state.timesSession.wrongCount = 0;
-          state.timesGame.answer = null;
-        }
-        if (state.oxSession.phase === "playing") {
-          clearOxTimer();
-          clearOxAdvance();
-          state.oxSession.phase = "setup";
-          state.oxSession.round = 0;
-          state.oxSession.score = 0;
-          state.oxSession.wrongCount = 0;
-          state.oxGame.answer = null;
-          state.oxGame.question = "";
-          state.oxGame.stageUp = null;
-        }
-        state.activeGame = null;
-      }
-      render();
+      if (tab) goToTab(tab.dataset.tab);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeDrawer();
     });
 
     on("#prev-period", "click", () => shiftPeriod(-1));
@@ -4533,8 +4645,20 @@
       if (e.target.id === "times-open-rank" || e.target.closest(".times-open-rank-btn")) openTimesRankModal();
       const timesChoice = e.target.closest("[data-times-choice]");
       if (timesChoice) pickTimesChoice(timesChoice.dataset.timesChoice);
-      const petCard = e.target.closest("[data-pet-card]");
-      if (petCard) openPetWeightModal(petCard.dataset.petCard);
+      const introCard = e.target.closest("[data-intro-card]");
+      if (introCard) {
+        const id = introCard.dataset.introCard;
+        if (petById(id)) openPetWeightModal(id);
+        else openPersonProfile(id);
+      }
+      const goTab = e.target.closest("[data-go-tab]");
+      if (goTab) {
+        closeDrawer();
+        goToTab(goTab.dataset.goTab);
+      }
+      if (e.target.closest("[data-drawer-open]")) openDrawer();
+      if (e.target.closest("[data-drawer-close]")) closeDrawer();
+      if (e.target.closest("#splash-start")) startFromSplash();
       if (e.target.id === "save-pet-weight") {
         const form = document.getElementById("pet-weight-form");
         if (form) savePetWeightFromForm(form);
@@ -4835,6 +4959,7 @@
     } else if (migrateLocalPokeRankIfNeeded()) {
       save();
     }
+    renderNav();
     bind();
     ensureWeather();
     ensureSchoolLunches(state.cursor);

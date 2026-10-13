@@ -1,8 +1,11 @@
-const CACHE = "family-hub-v44";
+const CACHE = "family-hub-v45";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
+  "./theme-veggie.css",
+  "./img/splash.jpg",
+  "./img/hero.jpg",
   "./app.js",
   "./firebase-config.js",
   "./manifest.webmanifest",
@@ -45,6 +48,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.js") ||
     url.pathname.endsWith("/styles.css") ||
+    url.pathname.endsWith("/theme-veggie.css") ||
     url.pathname.endsWith("/firebase-config.js") ||
     url.pathname.endsWith("/sw.js");
 
