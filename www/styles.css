@@ -1157,6 +1157,8 @@ input[type="radio"] {
   font-weight: 800;
 }
 .pet-facts dd small { font-weight: 600; color: var(--muted); }
+.pet-facts .pet-fact-wide { grid-column: 1 / -1; }
+.pet-facts dd { overflow-wrap: anywhere; }
 .pet-dday {
   font-family: "Jua", "Nunito", sans-serif;
   font-size: 20px;

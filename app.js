@@ -13,7 +13,8 @@
     { id: "peanut", name: "피넛", emoji: "🦎", defaultBreed: "크레스티드 게코", unit: "g", step: "0.1", color: "#7a9a3a" },
     { id: "chilbok", name: "칠복이", emoji: "🐩", defaultBreed: "실버 토이푸들", unit: "kg", step: "0.01", color: "#8f86b8" },
   ];
-  const TABS = ["calendar", "todos", "stamps", "pets", "talk", "game", "settings"];
+  const PERSON_EMOJI = { 아빠: "👨", 엄마: "👩", 딸: "👧", 아들: "👦" };
+  const TABS = ["intro", "calendar", "todos", "stamps", "talk", "game", "settings"];
   const TAB_SESSION_KEY = "family-hub-tab";
   const SETTINGS_UNLOCK_SESSION_KEY = "family-hub-settings-unlocked";
   const ALLOWANCE_MEMBERS = PEOPLE_MEMBERS.filter((m) => m.role === "딸" || m.role === "아들");
@@ -205,6 +206,7 @@
     },
     oxRank: [],
     pets: normalizePets(null),
+    profiles: normalizeProfiles(null),
     cloudReady: false,
     cloudError: "",
     saving: false,
@@ -231,7 +233,8 @@
 
   function readSavedTab() {
     try {
-      const saved = sessionStorage.getItem(TAB_SESSION_KEY);
+      let saved = sessionStorage.getItem(TAB_SESSION_KEY);
+      if (saved === "pets") saved = "intro";
       if (!TABS.includes(saved)) return "calendar";
       if (saved === "settings" && !readSettingsUnlocked()) return "calendar";
       return saved;
@@ -248,12 +251,30 @@
     }
   }
 
+  function validYmd(v) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "";
+  }
+
+  function normalizeProfiles(raw) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    const out = {};
+    PEOPLE_MEMBERS.forEach((m) => {
+      const row = src[m.id] || {};
+      out[m.id] = {
+        birthDate: validYmd(row.birthDate),
+        nickname: String(row.nickname || "").trim().slice(0, 30),
+        hobby: String(row.hobby || "").trim().slice(0, 60),
+      };
+    });
+    return out;
+  }
+
   function normalizePets(raw) {
     const src = raw && typeof raw === "object" ? raw : {};
     const out = {};
     PETS.forEach((p) => {
       const row = src[p.id] || {};
-      const validDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+      const validDate = validYmd;
       const weights = (Array.isArray(row.weights) ? row.weights : [])
         .map((w) => ({ date: validDate(w?.date), value: Number(w?.value) }))
         .filter((w) => w.date && Number.isFinite(w.value) && w.value > 0)
@@ -343,6 +364,7 @@
       timesRank: state.timesRank,
       oxRank: state.oxRank,
       pets: state.pets,
+      profiles: state.profiles,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
   }
@@ -735,6 +757,7 @@
     state.timesRank = normalizeTimesRank(data.timesRank);
     state.oxRank = normalizeOxRank(data.oxRank);
     state.pets = normalizePets(data.pets);
+    state.profiles = normalizeProfiles(data.profiles);
     const migrated = migrateLocalPokeRankIfNeeded();
     render();
     state.applyingRemote = false;
@@ -2012,10 +2035,49 @@
     return `${Number(value.toFixed(digits))}${pet.unit}`;
   }
 
-  function renderPets() {
-    const root = $("#pets-root");
+  function daysUntilNextBirthday(dateStr) {
+    if (!dateStr) return null;
+    const birth = parseYmd(dateStr);
+    const today = startOfDay(new Date());
+    const onYear = (y) => {
+      const d = new Date(y, birth.getMonth(), birth.getDate());
+      return d.getMonth() === birth.getMonth() ? d : new Date(y, birth.getMonth() + 1, 0);
+    };
+    let next = onYear(today.getFullYear());
+    if (next < today) next = onYear(today.getFullYear() + 1);
+    return Math.round((next - today) / 86400000);
+  }
+
+  function nextBirthdayLabel(dateStr) {
+    const n = daysUntilNextBirthday(dateStr);
+    if (n == null) return "날짜 미입력";
+    return n === 0 ? "오늘 생일! 🎂" : `D-${n}`;
+  }
+
+  function renderIntro() {
+    const root = $("#intro-root");
     if (!root) return;
-    root.innerHTML = PETS.map((p) => {
+    const people = PEOPLE_MEMBERS.map((m) => {
+      const info = state.profiles[m.id];
+      return `
+        <article class="pet-card" style="--pet:${m.color}">
+          <div class="pet-card-head">
+            <span class="pet-emoji" aria-hidden="true">${PERSON_EMOJI[m.role] || "🙂"}</span>
+            <div>
+              <h3 class="pet-name">${esc(m.shortName)}</h3>
+              <p class="pet-breed">${esc(m.role)}</p>
+            </div>
+          </div>
+          <dl class="pet-facts">
+            <div><dt>생일</dt><dd>${formatPetDate(info.birthDate)}</dd></div>
+            <div><dt>별명</dt><dd>${info.nickname ? esc(info.nickname) : "미입력"}</dd></div>
+            <div class="pet-fact-wide"><dt>취미</dt><dd>${info.hobby ? esc(info.hobby) : "미입력"}</dd></div>
+            <div><dt>태어난 지</dt><dd class="pet-dday">${petDayLabel(info.birthDate)}${info.birthDate ? "일" : ""}</dd></div>
+            <div><dt>다음 생일</dt><dd class="pet-dday">${nextBirthdayLabel(info.birthDate)}</dd></div>
+          </dl>
+        </article>`;
+    }).join("");
+    const pets = PETS.map((p) => {
       const info = state.pets[p.id];
       const latest = info.weights[info.weights.length - 1];
       return `
@@ -2036,6 +2098,7 @@
           <span class="pet-card-cta">체중 기록 보기 ›</span>
         </button>`;
     }).join("");
+    root.innerHTML = people + pets;
   }
 
   function petWeightChartSvg(pet, weights) {
@@ -2133,7 +2196,7 @@
     save();
     toast(`${pet.name} ${formatPetWeight(pet, value)} 기록했어요.`);
     openPetWeightModal(pet.id);
-    if (state.tab === "pets") renderPets();
+    if (state.tab === "intro") renderIntro();
   }
 
   function deletePetWeight(key) {
@@ -2144,13 +2207,23 @@
     state.pets[pet.id].weights = state.pets[pet.id].weights.filter((w) => w.date !== date);
     save();
     openPetWeightModal(pet.id);
-    if (state.tab === "pets") renderPets();
+    if (state.tab === "intro") renderIntro();
   }
 
-  function renderPetSettingsForm() {
-    const form = $("#pet-settings-form");
+  function renderIntroSettingsForm() {
+    const form = $("#intro-settings-form");
     if (!form) return;
+    const people = PEOPLE_MEMBERS.map((m) => {
+      const info = state.profiles[m.id];
+      return `<fieldset class="pet-settings-row" data-person-settings="${m.id}">
+          <legend>${PERSON_EMOJI[m.role] || "🙂"} ${esc(m.shortName)}</legend>
+          <label>생일 <input type="date" name="birthDate" value="${info.birthDate}" /></label>
+          <label>별명 <input name="nickname" maxlength="30" value="${esc(info.nickname)}" /></label>
+          <label>취미 <input name="hobby" maxlength="60" value="${esc(info.hobby)}" /></label>
+        </fieldset>`;
+    }).join("");
     form.innerHTML =
+      people +
       PETS.map((p) => {
         const info = state.pets[p.id];
         return `<fieldset class="pet-settings-row" data-pet-settings="${p.id}">
@@ -2159,10 +2232,17 @@
           <label>생일 <input type="date" name="birthDate" value="${info.birthDate}" /></label>
           <label>우리 집에 온 날 <input type="date" name="adoptDate" value="${info.adoptDate}" /></label>
         </fieldset>`;
-      }).join("") + `<button class="primary" type="button" id="save-pets">반려동물 정보 저장</button>`;
+      }).join("") + `<button class="primary" type="button" id="save-intro">가족 정보 저장</button>`;
   }
 
-  function savePetSettings() {
+  function saveIntroSettings() {
+    document.querySelectorAll("[data-person-settings]").forEach((row) => {
+      const info = state.profiles[row.dataset.personSettings];
+      if (!info) return;
+      info.birthDate = row.querySelector('[name="birthDate"]')?.value || "";
+      info.nickname = String(row.querySelector('[name="nickname"]')?.value || "").trim().slice(0, 30);
+      info.hobby = String(row.querySelector('[name="hobby"]')?.value || "").trim().slice(0, 60);
+    });
     document.querySelectorAll("[data-pet-settings]").forEach((row) => {
       const pet = petById(row.dataset.petSettings);
       if (!pet) return;
@@ -2172,12 +2252,12 @@
       info.adoptDate = row.querySelector('[name="adoptDate"]')?.value || "";
     });
     save();
-    toast("반려동물 정보를 저장했어요.");
+    toast("가족 정보를 저장했어요.");
   }
 
   function renderSettings() {
     const preferred = getPreferredMemberId();
-    renderPetSettingsForm();
+    renderIntroSettingsForm();
     const rows = state.categories
       .map(
         (c) => `<div class="cat-edit-row" data-cat-id="${esc(c.id)}">
@@ -3845,7 +3925,7 @@
     if (state.tab === "calendar") renderCalendar();
     if (state.tab === "todos") renderTodos();
     if (state.tab === "stamps") renderStampBoard();
-    if (state.tab === "pets") renderPets();
+    if (state.tab === "intro") renderIntro();
     if (state.tab === "talk") renderTalk();
     if (state.tab === "game") renderGameTab();
     if (state.tab === "settings") renderSettings();
@@ -4461,7 +4541,7 @@
       }
       const delWeight = e.target.closest("[data-del-weight]");
       if (delWeight) deletePetWeight(delWeight.dataset.delWeight);
-      if (e.target.id === "save-pets") savePetSettings();
+      if (e.target.id === "save-intro") saveIntroSettings();
       if (e.target.id === "ox-start-session") {
         const form = document.getElementById("ox-setup-form");
         if (!form) return;
@@ -4714,7 +4794,7 @@
     document.addEventListener("submit", async (e) => {
       const formId = e.target && e.target.id;
       const isComment = e.target && e.target.classList && e.target.classList.contains("comment-form");
-      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form", "pet-weight-form", "pet-settings-form"].includes(formId) && !isComment) return;
+      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form", "pet-weight-form", "intro-settings-form"].includes(formId) && !isComment) return;
       e.preventDefault();
       if (formId === "event-form") {
         saveEventFromForm(e.target);
@@ -4726,7 +4806,7 @@
         savePostFromForm(e.target);
       }
       if (formId === "pet-weight-form") savePetWeightFromForm(e.target);
-      if (formId === "pet-settings-form") savePetSettings();
+      if (formId === "intro-settings-form") saveIntroSettings();
       if (isComment) {
         saveCommentFromForm(e.target);
       }
