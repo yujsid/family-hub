@@ -4,9 +4,18 @@
     { id: "sinjeong", name: "윤신정", shortName: "신정", role: "엄마", color: "#d76a4f" },
     { id: "sua", name: "유수아", shortName: "수아", role: "딸", color: "#5e8f74" },
     { id: "sumin", name: "유수민", shortName: "수민", role: "아들", color: "#d4a017" },
+    { id: "chilbok", name: "칠복이", shortName: "칠복", role: "강아지", color: "#8f86b8", pet: true },
     { id: "family", name: "공통", shortName: "공통", role: "전체", color: "#8a6a4a", shared: true },
   ];
-  const PEOPLE_MEMBERS = MEMBERS.filter((m) => !m.shared);
+  const PEOPLE_MEMBERS = MEMBERS.filter((m) => !m.shared && !m.pet);
+  const CALENDAR_MEMBERS = MEMBERS.filter((m) => !m.shared);
+  const PETS = [
+    { id: "peanut", name: "피넛", emoji: "🦎", defaultBreed: "크레스티드 게코", unit: "g", step: "0.1", color: "#7a9a3a" },
+    { id: "chilbok", name: "칠복이", emoji: "🐩", defaultBreed: "실버 토이푸들", unit: "kg", step: "0.01", color: "#8f86b8" },
+  ];
+  const TABS = ["calendar", "todos", "stamps", "pets", "talk", "game", "settings"];
+  const TAB_SESSION_KEY = "family-hub-tab";
+  const SETTINGS_UNLOCK_SESSION_KEY = "family-hub-settings-unlocked";
   const ALLOWANCE_MEMBERS = PEOPLE_MEMBERS.filter((m) => m.role === "딸" || m.role === "아들");
 
   const DEFAULT_CATEGORIES = [
@@ -98,11 +107,11 @@
   ];
 
   const state = {
-    tab: "calendar",
+    tab: readSavedTab(),
     calView: "month",
     cursor: startOfDay(new Date()),
     selected: startOfDay(new Date()),
-    memberFilter: Object.fromEntries(PEOPLE_MEMBERS.map((m) => [m.id, true])),
+    memberFilter: Object.fromEntries(CALENDAR_MEMBERS.map((m) => [m.id, true])),
     todoFutureExtra: 0,
     typeFilter: { schedule: true, todo: true, stamp: true },
     pinBuffer: "",
@@ -195,12 +204,69 @@
       endReason: "",
     },
     oxRank: [],
+    pets: normalizePets(null),
     cloudReady: false,
     cloudError: "",
     saving: false,
     applyingRemote: false,
-    settingsUnlocked: false,
+    settingsUnlocked: readSettingsUnlocked(),
   };
+
+  function readSettingsUnlocked() {
+    try {
+      return sessionStorage.getItem(SETTINGS_UNLOCK_SESSION_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setSettingsUnlocked() {
+    state.settingsUnlocked = true;
+    try {
+      sessionStorage.setItem(SETTINGS_UNLOCK_SESSION_KEY, "1");
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function readSavedTab() {
+    try {
+      const saved = sessionStorage.getItem(TAB_SESSION_KEY);
+      if (!TABS.includes(saved)) return "calendar";
+      if (saved === "settings" && !readSettingsUnlocked()) return "calendar";
+      return saved;
+    } catch (_) {
+      return "calendar";
+    }
+  }
+
+  function persistTab() {
+    try {
+      sessionStorage.setItem(TAB_SESSION_KEY, state.tab);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function normalizePets(raw) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    const out = {};
+    PETS.forEach((p) => {
+      const row = src[p.id] || {};
+      const validDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+      const weights = (Array.isArray(row.weights) ? row.weights : [])
+        .map((w) => ({ date: validDate(w?.date), value: Number(w?.value) }))
+        .filter((w) => w.date && Number.isFinite(w.value) && w.value > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      out[p.id] = {
+        breed: String(row.breed || "").trim() || p.defaultBreed,
+        birthDate: validDate(row.birthDate),
+        adoptDate: validDate(row.adoptDate),
+        weights,
+      };
+    });
+    return out;
+  }
 
   let db = null;
   let pokeTimerId = null;
@@ -276,6 +342,7 @@
       pokeRank: state.pokeRank,
       timesRank: state.timesRank,
       oxRank: state.oxRank,
+      pets: state.pets,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
   }
@@ -667,6 +734,7 @@
     state.pokeRank = normalizePokeRank(data.pokeRank);
     state.timesRank = normalizeTimesRank(data.timesRank);
     state.oxRank = normalizeOxRank(data.oxRank);
+    state.pets = normalizePets(data.pets);
     const migrated = migrateLocalPokeRankIfNeeded();
     render();
     state.applyingRemote = false;
@@ -955,18 +1023,20 @@
   }
 
   function renderMemberFilters() {
-    const html =
+    const htmlFor = (list) =>
       `<span class="filter-label">가족</span>` +
-      PEOPLE_MEMBERS.map(
-        (m) => `
+      list
+        .map(
+          (m) => `
       <label class="chip">
         <span class="dot" style="background:${m.color}"></span>
         <input type="checkbox" data-member="${m.id}" ${state.memberFilter[m.id] ? "checked" : ""} />
         <span class="chip-name-full">${m.name}</span><span class="chip-name-short">${m.shortName || m.name}</span><span class="chip-role"> (${m.role})</span>
       </label>`
-      ).join("");
+        )
+        .join("");
     document.querySelectorAll("[data-member-filters]").forEach((el) => {
-      el.innerHTML = html;
+      el.innerHTML = htmlFor(el.closest("#view-calendar") ? CALENDAR_MEMBERS : PEOPLE_MEMBERS);
     });
   }
 
@@ -985,6 +1055,7 @@
 
   function memberLabel(m) {
     if (!m) return "";
+    if (m.pet) return m.shortName || m.name;
     return m.name.length >= 3 ? m.name.slice(1) : m.name;
   }
 
@@ -1914,8 +1985,199 @@
     toast("댓글을 달았습니다.");
   }
 
+  function petById(id) {
+    return PETS.find((p) => p.id === id);
+  }
+
+  function petDayCount(dateStr) {
+    if (!dateStr) return null;
+    const diff = Math.round((startOfDay(new Date()) - parseYmd(dateStr)) / 86400000);
+    return diff >= 0 ? diff + 1 : diff;
+  }
+
+  function petDayLabel(dateStr) {
+    const n = petDayCount(dateStr);
+    if (n == null) return "날짜 미입력";
+    return n > 0 ? `D+${n}` : `D${n}`;
+  }
+
+  function formatPetDate(dateStr) {
+    if (!dateStr) return "미입력";
+    const d = parseYmd(dateStr);
+    return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
+  }
+
+  function formatPetWeight(pet, value) {
+    const digits = pet.unit === "kg" ? 2 : 1;
+    return `${Number(value.toFixed(digits))}${pet.unit}`;
+  }
+
+  function renderPets() {
+    const root = $("#pets-root");
+    if (!root) return;
+    root.innerHTML = PETS.map((p) => {
+      const info = state.pets[p.id];
+      const latest = info.weights[info.weights.length - 1];
+      return `
+        <button type="button" class="pet-card" data-pet-card="${p.id}" style="--pet:${p.color}">
+          <div class="pet-card-head">
+            <span class="pet-emoji" aria-hidden="true">${p.emoji}</span>
+            <div>
+              <h3 class="pet-name">${esc(p.name)}</h3>
+              <p class="pet-breed">${esc(info.breed)}</p>
+            </div>
+          </div>
+          <dl class="pet-facts">
+            <div><dt>생일</dt><dd>${formatPetDate(info.birthDate)}</dd></div>
+            <div><dt>태어난 지</dt><dd class="pet-dday">${petDayLabel(info.birthDate)}${info.birthDate ? "일" : ""}</dd></div>
+            <div><dt>우리 집에 온 지</dt><dd class="pet-dday">${petDayLabel(info.adoptDate)}${info.adoptDate ? "일" : ""}</dd></div>
+            <div><dt>최근 체중</dt><dd>${latest ? `${formatPetWeight(p, latest.value)} <small>(${formatPetDate(latest.date)})</small>` : "기록 없음"}</dd></div>
+          </dl>
+          <span class="pet-card-cta">체중 기록 보기 ›</span>
+        </button>`;
+    }).join("");
+  }
+
+  function petWeightChartSvg(pet, weights) {
+    if (!weights.length) return `<p class="hint pet-chart-empty">아직 체중 기록이 없어요. 아래에서 첫 기록을 남겨 보세요.</p>`;
+    const W = 320;
+    const H = 180;
+    const pad = { l: 44, r: 14, t: 14, b: 28 };
+    const times = weights.map((w) => parseYmd(w.date).getTime());
+    const values = weights.map((w) => w.value);
+    const tMin = Math.min(...times);
+    const tMax = Math.max(...times);
+    let vMin = Math.min(...values);
+    let vMax = Math.max(...values);
+    const span = vMax - vMin || Math.max(vMax * 0.1, 0.1);
+    vMin -= span * 0.15;
+    vMax += span * 0.15;
+    const x = (t) => (tMax === tMin ? (pad.l + W - pad.r) / 2 : pad.l + ((t - tMin) / (tMax - tMin)) * (W - pad.l - pad.r));
+    const y = (v) => pad.t + (1 - (v - vMin) / (vMax - vMin)) * (H - pad.t - pad.b);
+    const pts = weights.map((w, i) => [x(times[i]), y(w.value)]);
+    const line = pts.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+    const dots = pts
+      .map(
+        ([px, py], i) =>
+          `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="4"><title>${formatPetDate(weights[i].date)} · ${formatPetWeight(pet, weights[i].value)}</title></circle>`
+      )
+      .join("");
+    const yTicks = [vMax, (vMax + vMin) / 2, vMin]
+      .map((v) => `<text x="${pad.l - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${formatPetWeight(pet, v)}</text>
+        <line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="pet-chart-grid" />`)
+      .join("");
+    const first = weights[0].date;
+    const last = weights[weights.length - 1].date;
+    const xLabels =
+      first === last
+        ? `<text x="${(W / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${formatPetDate(first)}</text>`
+        : `<text x="${pad.l}" y="${H - 8}" text-anchor="start">${formatPetDate(first)}</text>
+           <text x="${W - pad.r}" y="${H - 8}" text-anchor="end">${formatPetDate(last)}</text>`;
+    return `<svg class="pet-chart" viewBox="0 0 ${W} ${H}" style="--pet:${pet.color}" role="img" aria-label="${esc(pet.name)} 체중 그래프">
+      ${yTicks}
+      ${pts.length > 1 ? `<polyline points="${line}" />` : ""}
+      ${dots}
+      ${xLabels}
+    </svg>`;
+  }
+
+  function openPetWeightModal(petId) {
+    const pet = petById(petId);
+    if (!pet) return;
+    const info = state.pets[pet.id];
+    const rows = [...info.weights]
+      .reverse()
+      .map(
+        (w) => `<li class="pet-weight-row">
+          <span>${formatPetDate(w.date)}</span>
+          <strong>${formatPetWeight(pet, w.value)}</strong>
+          <button type="button" class="danger tiny" data-del-weight="${pet.id}|${w.date}">삭제</button>
+        </li>`
+      )
+      .join("");
+    openModal(`
+      <div class="pet-weight-modal" data-pet-modal="${pet.id}">
+        <h3>${pet.emoji} ${esc(pet.name)} 체중 관리</h3>
+        ${petWeightChartSvg(pet, info.weights)}
+        <form id="pet-weight-form" class="pet-weight-form" action="#" method="post">
+          <input type="hidden" name="petId" value="${pet.id}" />
+          <label>날짜 <input type="date" name="date" required value="${ymd(new Date())}" /></label>
+          <label>체중 (${pet.unit})
+            <input type="number" name="value" required min="0" step="${pet.step}" inputmode="decimal" placeholder="${pet.unit === "kg" ? "예: 3.25" : "예: 45.5"}" />
+          </label>
+          <button class="primary" type="button" id="save-pet-weight">기록</button>
+        </form>
+        <p class="hint">같은 날짜로 다시 기록하면 그 날 체중이 바뀝니다.</p>
+        ${rows ? `<ol class="pet-weight-list">${rows}</ol>` : ""}
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">닫기</button>
+        </div>
+      </div>
+    `);
+  }
+
+  function savePetWeightFromForm(form) {
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    const fd = new FormData(form);
+    const pet = petById(fd.get("petId"));
+    const value = Number(fd.get("value"));
+    const date = String(fd.get("date") || "");
+    if (!pet || !date || !Number.isFinite(value) || value <= 0) return toast("날짜와 체중을 확인해 주세요.");
+    const info = state.pets[pet.id];
+    info.weights = info.weights.filter((w) => w.date !== date);
+    info.weights.push({ date, value });
+    info.weights.sort((a, b) => a.date.localeCompare(b.date));
+    save();
+    toast(`${pet.name} ${formatPetWeight(pet, value)} 기록했어요.`);
+    openPetWeightModal(pet.id);
+    if (state.tab === "pets") renderPets();
+  }
+
+  function deletePetWeight(key) {
+    const [petId, date] = String(key).split("|");
+    const pet = petById(petId);
+    if (!pet) return;
+    if (!window.confirm(`${formatPetDate(date)} 체중 기록을 삭제할까요?`)) return;
+    state.pets[pet.id].weights = state.pets[pet.id].weights.filter((w) => w.date !== date);
+    save();
+    openPetWeightModal(pet.id);
+    if (state.tab === "pets") renderPets();
+  }
+
+  function renderPetSettingsForm() {
+    const form = $("#pet-settings-form");
+    if (!form) return;
+    form.innerHTML =
+      PETS.map((p) => {
+        const info = state.pets[p.id];
+        return `<fieldset class="pet-settings-row" data-pet-settings="${p.id}">
+          <legend>${p.emoji} ${esc(p.name)}</legend>
+          <label>품종 <input name="breed" maxlength="30" value="${esc(info.breed)}" /></label>
+          <label>생일 <input type="date" name="birthDate" value="${info.birthDate}" /></label>
+          <label>우리 집에 온 날 <input type="date" name="adoptDate" value="${info.adoptDate}" /></label>
+        </fieldset>`;
+      }).join("") + `<button class="primary" type="button" id="save-pets">반려동물 정보 저장</button>`;
+  }
+
+  function savePetSettings() {
+    document.querySelectorAll("[data-pet-settings]").forEach((row) => {
+      const pet = petById(row.dataset.petSettings);
+      if (!pet) return;
+      const info = state.pets[pet.id];
+      info.breed = String(row.querySelector('[name="breed"]')?.value || "").trim() || pet.defaultBreed;
+      info.birthDate = row.querySelector('[name="birthDate"]')?.value || "";
+      info.adoptDate = row.querySelector('[name="adoptDate"]')?.value || "";
+    });
+    save();
+    toast("반려동물 정보를 저장했어요.");
+  }
+
   function renderSettings() {
     const preferred = getPreferredMemberId();
+    renderPetSettingsForm();
     const rows = state.categories
       .map(
         (c) => `<div class="cat-edit-row" data-cat-id="${esc(c.id)}">
@@ -3583,9 +3845,11 @@
     if (state.tab === "calendar") renderCalendar();
     if (state.tab === "todos") renderTodos();
     if (state.tab === "stamps") renderStampBoard();
+    if (state.tab === "pets") renderPets();
     if (state.tab === "talk") renderTalk();
     if (state.tab === "game") renderGameTab();
     if (state.tab === "settings") renderSettings();
+    persistTab();
   }
 
   function addMonthsYmd(dateStr, months) {
@@ -3967,7 +4231,7 @@
           toast("설정에 들어가려면 비밀번호가 필요해요.");
           return;
         }
-        state.settingsUnlocked = true;
+        setSettingsUnlocked();
         toast("설정을 열었어요!");
       }
       state.tab = next;
@@ -4189,6 +4453,15 @@
       if (e.target.id === "times-open-rank" || e.target.closest(".times-open-rank-btn")) openTimesRankModal();
       const timesChoice = e.target.closest("[data-times-choice]");
       if (timesChoice) pickTimesChoice(timesChoice.dataset.timesChoice);
+      const petCard = e.target.closest("[data-pet-card]");
+      if (petCard) openPetWeightModal(petCard.dataset.petCard);
+      if (e.target.id === "save-pet-weight") {
+        const form = document.getElementById("pet-weight-form");
+        if (form) savePetWeightFromForm(form);
+      }
+      const delWeight = e.target.closest("[data-del-weight]");
+      if (delWeight) deletePetWeight(delWeight.dataset.delWeight);
+      if (e.target.id === "save-pets") savePetSettings();
       if (e.target.id === "ox-start-session") {
         const form = document.getElementById("ox-setup-form");
         if (!form) return;
@@ -4441,7 +4714,7 @@
     document.addEventListener("submit", async (e) => {
       const formId = e.target && e.target.id;
       const isComment = e.target && e.target.classList && e.target.classList.contains("comment-form");
-      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form"].includes(formId) && !isComment) return;
+      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form", "pet-weight-form", "pet-settings-form"].includes(formId) && !isComment) return;
       e.preventDefault();
       if (formId === "event-form") {
         saveEventFromForm(e.target);
@@ -4452,6 +4725,8 @@
       if (formId === "post-form") {
         savePostFromForm(e.target);
       }
+      if (formId === "pet-weight-form") savePetWeightFromForm(e.target);
+      if (formId === "pet-settings-form") savePetSettings();
       if (isComment) {
         saveCommentFromForm(e.target);
       }

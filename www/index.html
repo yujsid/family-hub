@@ -16,7 +16,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=42" />
+  <link rel="stylesheet" href="styles.css?v=43" />
 </head>
 <body>
   <div class="app">
@@ -28,6 +28,7 @@
         <button class="tab is-active" data-tab="calendar" type="button">일정</button>
         <button class="tab" data-tab="todos" type="button">할일</button>
         <button class="tab" data-tab="stamps" type="button">용돈</button>
+        <button class="tab" data-tab="pets" type="button">반려동물</button>
         <button class="tab" data-tab="talk" type="button">대화</button>
         <button class="tab" data-tab="game" type="button">게임</button>
         <button class="tab" data-tab="settings" type="button">설정</button>
@@ -84,6 +85,14 @@
       </div>
       <p class="hint">도장은 비밀번호를 입력한 뒤에만 찍을 수 있어요. 일정에도 같이 표시됩니다.</p>
       <div id="stamp-board" class="stamp-board"></div>
+    </section>
+
+    <section id="view-pets" class="view">
+      <div class="toolbar">
+        <h2 class="talk-heading">우리 집 반려동물</h2>
+      </div>
+      <p class="hint">카드를 누르면 체중 기록과 그래프를 볼 수 있어요. 생일과 우리 집에 온 날은 설정에서 입력합니다.</p>
+      <div id="pets-root" class="pets-grid"></div>
     </section>
 
     <section id="view-talk" class="view">
@@ -159,6 +168,11 @@
           <form id="device-member-form" class="stack" action="#" method="post"></form>
         </article>
         <article class="card">
+          <h3>반려동물</h3>
+          <p class="hint">반려동물 화면의 품종, 생일, 우리 집에 온 날(D+일수)에 쓰입니다.</p>
+          <form id="pet-settings-form" class="stack" action="#" method="post"></form>
+        </article>
+        <article class="card">
           <h3>날씨</h3>
           <p class="hint">일정 화면에 오늘~며칠 날씨를 보여줍니다. 기상청 API 키를 넣으면 기상청 단기예보를 사용합니다.</p>
           <form id="weather-form" class="stack" action="#" method="post"></form>
@@ -188,7 +202,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=42"></script>
-  <script src="app.js?v=42"></script>
+  <script src="firebase-config.js?v=43"></script>
+  <script src="app.js?v=43"></script>
 </body>
 </html>

@@ -1093,6 +1093,147 @@ input[type="radio"] {
   padding: 12px 14px;
 }
 
+.pets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.pet-card {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+  padding: 18px;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--pet) 14%, #fff), var(--paper) 60%);
+  border: 2px solid color-mix(in srgb, var(--pet) 35%, var(--line));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+.pet-card:active { transform: scale(0.99); }
+.pet-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pet-emoji {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 32px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--pet) 22%, #fff);
+}
+.pet-name {
+  margin: 0;
+  font-family: "Jua", "Nunito", sans-serif;
+  font-size: 24px;
+}
+.pet-breed {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.pet-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+.pet-facts div {
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--line);
+}
+.pet-facts dt {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.pet-facts dd {
+  margin: 2px 0 0;
+  font-weight: 800;
+}
+.pet-facts dd small { font-weight: 600; color: var(--muted); }
+.pet-dday {
+  font-family: "Jua", "Nunito", sans-serif;
+  font-size: 20px;
+  color: color-mix(in srgb, var(--pet) 70%, var(--ink));
+}
+.pet-card-cta {
+  justify-self: end;
+  font-size: 13px;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--pet) 70%, var(--ink));
+}
+.pet-weight-modal { display: grid; gap: 12px; }
+.pet-weight-modal h3 { margin: 0; }
+.pet-chart {
+  width: 100%;
+  height: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.pet-chart text {
+  font-size: 10px;
+  fill: var(--muted);
+  font-weight: 700;
+}
+.pet-chart-grid { stroke: var(--line); stroke-dasharray: 3 3; }
+.pet-chart polyline {
+  fill: none;
+  stroke: var(--pet);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.pet-chart circle {
+  fill: #fff;
+  stroke: var(--pet);
+  stroke-width: 2.5;
+}
+.pet-chart-empty { margin: 0; text-align: center; padding: 18px 0; }
+.pet-weight-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+.pet-weight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+.pet-weight-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.pet-settings-row {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px 12px;
+  margin: 0;
+}
+.pet-settings-row legend { font-weight: 800; padding: 0 4px; }
+@media (max-width: 480px) {
+  .pet-weight-form { grid-template-columns: 1fr 1fr; }
+  .pet-weight-form button { grid-column: 1 / -1; }
+}
 .poke-game-root {
   display: grid;
   gap: 12px;
@@ -1597,7 +1738,7 @@ input[type="radio"] {
     bottom: 0;
     z-index: 15;
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(7, 1fr);
     gap: 2px;
     border-radius: 18px 18px 0 0;
     padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
