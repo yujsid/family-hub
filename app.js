@@ -78,7 +78,6 @@
   const WEATHER_KEY_STORAGE = "family-hub-weather-service-key";
   const WEATHER_CACHE_KEY = "family-hub-weather-cache";
   const POKE_RANK_KEY = "family-hub-poke-rank";
-  const POKE_RANK_MIGRATED_KEY = "family-hub-poke-rank-migrated";
   const QUIZ_POINTS = 10;
   const QUIZ_MAX_WRONG = 1;
   const QUIZ_STAGE_LIMIT = 10;
@@ -241,6 +240,7 @@
       endReason: "",
     },
     oxRank: [],
+    cloudHydrated: false,
     pets: normalizePets(null),
     profiles: normalizeProfiles(null),
     cloudReady: false,
@@ -387,7 +387,7 @@
   }
 
   function payloadFromState() {
-    return {
+    const payload = {
       events: state.events,
       stamps: state.stamps,
       posts: state.posts,
@@ -396,13 +396,16 @@
       rates: state.rates,
       todoRate: state.todoRate,
       meals: state.meals,
-      pokeRank: state.pokeRank,
-      timesRank: state.timesRank,
-      oxRank: state.oxRank,
       pets: state.pets,
       profiles: state.profiles,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
+    if (state.cloudHydrated) {
+      payload.pokeRank = state.pokeRank;
+      payload.timesRank = state.timesRank;
+      payload.oxRank = state.oxRank;
+    }
+    return payload;
   }
 
   function normalizeGameRank(list) {
@@ -461,30 +464,58 @@
     }
   }
 
-  function migrateLocalPokeRankIfNeeded() {
+  function rankEntryKey(e) {
+    return `${e.name}|${e.score}|${e.rounds}|${e.at}`;
+  }
+
+  function mergeRankLists(...lists) {
+    const seen = new Set();
+    const out = [];
+    lists.flat().forEach((e) => {
+      if (!e?.name) return;
+      const k = rankEntryKey(e);
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(e);
+    });
+    out.sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+    return out.slice(-100);
+  }
+
+  function ranksNeedUpload(local, remote) {
+    const remoteKeys = new Set((remote || []).map(rankEntryKey));
+    return (local || []).some((e) => !remoteKeys.has(rankEntryKey(e)));
+  }
+
+  function persistLocalRanks() {
     try {
-      if (localStorage.getItem(POKE_RANK_MIGRATED_KEY) === "1") return false;
-      const local = readLocalPokeRank();
-      localStorage.setItem(POKE_RANK_MIGRATED_KEY, "1");
-      if (!local.length) {
-        localStorage.removeItem(POKE_RANK_KEY);
-        return false;
-      }
-      const keyOf = (e) => `${e.name}|${e.score}|${e.rounds}|${e.at}`;
-      const seen = new Set(state.pokeRank.map(keyOf));
-      let added = false;
-      local.forEach((e) => {
-        if (seen.has(keyOf(e))) return;
-        state.pokeRank.push(e);
-        seen.add(keyOf(e));
-        added = true;
-      });
-      if (state.pokeRank.length > 100) state.pokeRank = state.pokeRank.slice(-100);
-      localStorage.removeItem(POKE_RANK_KEY);
-      return added;
+      localStorage.setItem(POKE_RANK_KEY, JSON.stringify(state.pokeRank));
+      localStorage.setItem(TIMES_RANK_KEY, JSON.stringify(state.timesRank));
+      localStorage.setItem(OX_RANK_KEY, JSON.stringify(state.oxRank));
     } catch (_) {
-      return false;
+      /* ignore */
     }
+  }
+
+  function hydrateLocalRanks() {
+    state.pokeRank = mergeRankLists(state.pokeRank, readLocalPokeRank());
+    state.timesRank = mergeRankLists(state.timesRank, readLocalTimesRank());
+    state.oxRank = mergeRankLists(state.oxRank, readLocalOxRank());
+  }
+
+  function mergeRemoteRanks(data) {
+    state.pokeRank = mergeRankLists(state.pokeRank, normalizePokeRank(data?.pokeRank));
+    state.timesRank = mergeRankLists(state.timesRank, normalizeTimesRank(data?.timesRank));
+    state.oxRank = mergeRankLists(state.oxRank, normalizeOxRank(data?.oxRank));
+    persistLocalRanks();
+  }
+
+  function localRanksNeedUpload(data) {
+    return (
+      ranksNeedUpload(state.pokeRank, normalizePokeRank(data?.pokeRank)) ||
+      ranksNeedUpload(state.timesRank, normalizeTimesRank(data?.timesRank)) ||
+      ranksNeedUpload(state.oxRank, normalizeOxRank(data?.oxRank))
+    );
   }
 
   function normalizeMeals(raw) {
@@ -789,15 +820,14 @@
     const todoRate = Number(data.todoRate);
     state.todoRate = Number.isFinite(todoRate) && todoRate >= 0 ? todoRate : 500;
     state.meals = normalizeMeals(data.meals);
-    state.pokeRank = normalizePokeRank(data.pokeRank);
-    state.timesRank = normalizeTimesRank(data.timesRank);
-    state.oxRank = normalizeOxRank(data.oxRank);
+    mergeRemoteRanks(data);
     state.pets = normalizePets(data.pets);
     state.profiles = normalizeProfiles(data.profiles);
-    const migrated = migrateLocalPokeRankIfNeeded();
+    const uploadRanks = localRanksNeedUpload(data);
+    state.cloudHydrated = true;
     render();
     state.applyingRemote = false;
-    if (migrated) save();
+    if (uploadRanks) save();
   }
 
   function esc(s) {
@@ -879,6 +909,7 @@
 
       const snap = await familyRef.get();
       if (!snap.exists) {
+        state.cloudHydrated = true;
         await familyRef.set(payloadFromState());
       } else {
         applyRemoteData(snap.data() || {});
@@ -887,7 +918,10 @@
       familyRef.onSnapshot(
         (doc) => {
           if (!doc.exists) return;
-          if (state.saving) return;
+          if (state.saving) {
+            mergeRemoteRanks(doc.data() || {});
+            return;
+          }
           applyRemoteData(doc.data() || {});
           state.cloudReady = true;
           state.cloudError = "";
@@ -2601,15 +2635,8 @@
       at: String(entry?.at || new Date().toISOString()),
     });
     if (state.pokeRank.length > 100) state.pokeRank = state.pokeRank.slice(-100);
-    if (familyRef) {
-      save();
-      return;
-    }
-    try {
-      localStorage.setItem(POKE_RANK_KEY, JSON.stringify(state.pokeRank));
-    } catch (_) {
-      /* ignore */
-    }
+    persistLocalRanks();
+    save();
   }
 
   function getPokeRankBoard(limit = QUIZ_RANK_TOP) {
@@ -3062,15 +3089,8 @@
       at: String(entry?.at || new Date().toISOString()),
     });
     if (state.timesRank.length > 100) state.timesRank = state.timesRank.slice(-100);
-    if (familyRef) {
-      save();
-      return;
-    }
-    try {
-      localStorage.setItem(TIMES_RANK_KEY, JSON.stringify(state.timesRank));
-    } catch (_) {
-      /* ignore */
-    }
+    persistLocalRanks();
+    save();
   }
 
   function getTimesRankBoard(limit = QUIZ_RANK_TOP) {
@@ -3600,15 +3620,8 @@
       at: String(entry?.at || new Date().toISOString()),
     });
     if (state.oxRank.length > 100) state.oxRank = state.oxRank.slice(-100);
-    if (familyRef) {
-      save();
-      return;
-    }
-    try {
-      localStorage.setItem(OX_RANK_KEY, JSON.stringify(state.oxRank));
-    } catch (_) {
-      /* ignore */
-    }
+    persistLocalRanks();
+    save();
   }
 
   function getOxRankBoard(limit = QUIZ_RANK_TOP) {
@@ -5014,14 +5027,8 @@
     }, true);
   }
 
+  hydrateLocalRanks();
   initCloud().then(() => {
-    if (!isFirebaseConfigured()) {
-      state.pokeRank = readLocalPokeRank();
-      state.timesRank = readLocalTimesRank();
-      state.oxRank = readLocalOxRank();
-    } else if (migrateLocalPokeRankIfNeeded()) {
-      save();
-    }
     renderNav();
     bind();
     ensureWeather();
