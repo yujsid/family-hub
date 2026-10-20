@@ -97,8 +97,15 @@
   ];
   const POKE_MAX_ID = 151; // 1세대
   const TIMES_RANK_KEY = "family-hub-times-rank";
-  const TIMES_MIN = 2;
-  const TIMES_MAX = 9;
+  const TIMES_OTHER_MIN = 0;
+  const TIMES_OTHER_MAX = 9;
+  const TIMES_STAGES = [
+    { count: 5, seconds: 5, points: 5, tables: [0, 1, 2, 3, 5] },
+    { count: 10, seconds: 5, points: 6, tables: [0, 1, 2, 3, 4, 5, 6, 8] },
+    { count: 10, seconds: 5, points: 7, tables: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+    { count: 10, seconds: 4, points: 9, tables: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+    { count: Infinity, seconds: 3, points: 10, tables: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  ];
   const OX_RANK_KEY = "family-hub-ox-rank";
   const OX_FETCH_AMOUNT = 6;
   const POKE_TYPE_KO = {
@@ -2464,13 +2471,50 @@
       <div class="poke-card quiz-stage-up">
         <p class="quiz-stage-up-kicker">LEVEL UP</p>
         <p class="quiz-stage-up-num">${stageUp.stage}단계</p>
-        <p class="quiz-stage-up-detail">제한시간 <strong>${stageUp.seconds}초</strong></p>
+        <p class="quiz-stage-up-detail">제한시간 <strong>${stageUp.seconds}초</strong>${
+          stageUp.points ? ` · 문제당 <strong>${stageUp.points}점</strong>` : ""
+        }</p>
         <p class="hint">조금만 더 집중해 보세요!</p>
       </div>`;
   }
 
   function quizRulesHintHtml() {
     return `정답 <strong>${QUIZ_POINTS}점</strong> · <strong>${QUIZ_MAX_WRONG}회</strong> 틀리면 탈락<br/>1단계 5초(10문제) → 2단계 4초 → 3단계 3초 → 4단계 2초 → 5단계 1초(제한 없음)`;
+  }
+
+  function timesStageIndex(answeredCount) {
+    let remaining = Math.max(0, answeredCount);
+    for (let i = 0; i < TIMES_STAGES.length; i++) {
+      const count = TIMES_STAGES[i].count;
+      if (!Number.isFinite(count) || remaining < count) return i;
+      remaining -= count;
+    }
+    return TIMES_STAGES.length - 1;
+  }
+
+  function timesStageConfig(answeredCount) {
+    return TIMES_STAGES[timesStageIndex(answeredCount)];
+  }
+
+  function timesSecondsForRound(answeredCount) {
+    return timesStageConfig(answeredCount).seconds;
+  }
+
+  function timesPointsForRound(answeredCount) {
+    return timesStageConfig(answeredCount).points;
+  }
+
+  function timesStageNumber(answeredCount) {
+    return timesStageIndex(answeredCount) + 1;
+  }
+
+  function didTimesStageUp(answeredCountAfter) {
+    if (answeredCountAfter <= 0) return false;
+    return timesStageIndex(answeredCountAfter) > timesStageIndex(answeredCountAfter - 1);
+  }
+
+  function timesRulesHintHtml() {
+    return `1회 틀리면 탈락<br/>1단계 5초 · 0·1·2·3·5단 5문제 5점 → 2단계 4·6·8단 추가 10문제 6점 → 3단계 0~9단 10문제 7점 → 4단계 4초 10문제 9점 → 5단계 3초 · 실패할 때까지 10점`;
   }
 
   async function fetchPokeNameKo(id) {
@@ -2992,16 +3036,17 @@
       correct - 10,
     ];
     const wrong = [];
+    const minWrong = correct === 0 ? 0 : 1;
     for (const n of shuffleArray(candidates)) {
       if (wrong.length >= 3) break;
-      if (!Number.isFinite(n) || n < 1 || n > 100 || used.has(n)) continue;
+      if (!Number.isFinite(n) || n < minWrong || n > 100 || used.has(n)) continue;
       wrong.push(n);
       used.add(n);
     }
     let guard = 0;
     while (wrong.length < 3 && guard++ < 80) {
-      const n = randInt(Math.max(1, correct - 12), correct + 12);
-      if (used.has(n)) continue;
+      const n = randInt(Math.max(minWrong, correct - 12), correct + 12);
+      if (used.has(n) || n < minWrong) continue;
       wrong.push(n);
       used.add(n);
     }
@@ -3047,7 +3092,7 @@
       timesAdvanceTimeout = null;
       if (s.phase !== "playing" || !g.answered) return;
       if (s.wrongCount >= QUIZ_MAX_WRONG) endTimesSession();
-      else if (isCorrect && didQuizStageUp(s.round)) showTimesStageUp();
+      else if (isCorrect && didTimesStageUp(s.round)) showTimesStageUp();
       else loadTimesQuestion();
     }, delay);
   }
@@ -3058,12 +3103,13 @@
     clearTimesTimer();
     clearTimesAdvance();
     g.stageUp = {
-      stage: quizStageNumber(s.round),
-      seconds: quizSecondsForRound(s.round),
+      stage: timesStageNumber(s.round),
+      seconds: timesSecondsForRound(s.round),
+      points: timesPointsForRound(s.round),
     };
     g.answer = null;
     renderTimesGame();
-    toast(`${g.stageUp.stage}단계! 제한시간 ${g.stageUp.seconds}초`);
+    toast(`${g.stageUp.stage}단계! 제한시간 ${g.stageUp.seconds}초 · 문제당 ${g.stageUp.points}점`);
     timesAdvanceTimeout = setTimeout(() => {
       timesAdvanceTimeout = null;
       if (s.phase !== "playing") return;
@@ -3098,7 +3144,7 @@
     clearTimesTimer();
     const g = state.timesGame;
     const s = state.timesSession;
-    g.countdown = quizSecondsForRound(s.round);
+    g.countdown = timesSecondsForRound(s.round);
     refreshTimesCountdownDom();
     timesTimerId = setInterval(() => {
       if (s.phase !== "playing" || g.answered || g.answer == null) {
@@ -3122,11 +3168,12 @@
     clearTimesTimer();
     g.answered = true;
     g.picked = picked;
+    const points = timesPointsForRound(s.round);
     s.round += 1;
     g.feedback = isCorrect ? "correct" : "wrong";
     if (isCorrect) {
-      s.score += QUIZ_POINTS;
-      g.message = `정답! +${QUIZ_POINTS}점 🎉`;
+      s.score += points;
+      g.message = `정답! +${points}점 🎉`;
       toast(`정답! ${g.a} × ${g.b} = ${g.answer}`);
     } else {
       s.wrongCount += 1;
@@ -3191,7 +3238,7 @@
             이름
             <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
           </label>
-          <p class="hint">${quizRulesHintHtml()} · ${TIMES_MIN}~${TIMES_MAX}단</p>
+          <p class="hint">${timesRulesHintHtml()}</p>
           <div class="poke-actions">
             <button class="primary" type="button" id="times-start-session">게임 시작</button>
             <button class="primary times-open-rank-btn" type="button">순위 보기</button>
@@ -3254,7 +3301,8 @@
       })
       .join("");
     const sessionEnded = g.answered && s.wrongCount >= QUIZ_MAX_WRONG;
-    const limitSec = quizSecondsForRound(s.round);
+    const stageRound = g.answered ? Math.max(0, s.round - 1) : s.round;
+    const limitSec = timesSecondsForRound(stageRound);
     const cardFx = [
       g.feedback ? `poke-card--${g.feedback}` : "",
       !g.answered && g.countdown <= Math.min(2, limitSec) ? "poke-card--urgent" : "",
@@ -3273,8 +3321,8 @@
     root.innerHTML = `
       <div class="poke-scorebar">
         <span>참가 <strong>${esc(s.playerName)}</strong></span>
-        <span>단계 <strong>${quizStageNumber(s.round)}</strong></span>
-        <span>문제 <strong>${s.round + 1}</strong>번째</span>
+        <span>단계 <strong>${timesStageNumber(stageRound)}</strong></span>
+        <span>문제 <strong>${g.answered ? s.round : s.round + 1}</strong>번째</span>
         <span class="poke-score${scoreFx}">점수 <strong>${s.score}</strong></span>
         ${countdownHtml}
       </div>
@@ -3349,8 +3397,22 @@
     if (s.phase !== "playing") return;
     clearTimesTimer();
     clearTimesAdvance();
-    const a = randInt(TIMES_MIN, TIMES_MAX);
-    const b = randInt(TIMES_MIN, TIMES_MAX);
+    const tables = timesStageConfig(s.round).tables;
+    const table = tables[randInt(0, tables.length - 1)];
+    const other = randInt(TIMES_OTHER_MIN, TIMES_OTHER_MAX);
+    let a = table;
+    let b = other;
+    if (Math.random() < 0.5) {
+      a = other;
+      b = table;
+    }
+    let guard = 0;
+    while (g.a === a && g.b === b && guard++ < 12) {
+      const nextTable = tables[randInt(0, tables.length - 1)];
+      const nextOther = randInt(TIMES_OTHER_MIN, TIMES_OTHER_MAX);
+      a = Math.random() < 0.5 ? nextTable : nextOther;
+      b = a === nextTable ? nextOther : nextTable;
+    }
     g.a = a;
     g.b = b;
     g.answer = a * b;
