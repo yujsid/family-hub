@@ -1257,6 +1257,39 @@ input[type="radio"] {
 }
 .game-panel[hidden] { display: none !important; }
 .game-menu[hidden] { display: none !important; }
+.type-subject {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--leaf-soft, #eef5e4);
+  color: var(--leaf, #3f7a35);
+  font-size: 13px;
+  font-weight: 800;
+}
+.type-passage {
+  margin: 0 0 12px;
+  font-size: 22px;
+  line-height: 1.75;
+  font-weight: 800;
+  word-break: keep-all;
+}
+.type-ch.is-done { color: var(--leaf, #3f7a35); }
+.type-ch.is-now { border-bottom: 3px solid var(--leaf, #3f7a35); }
+.type-ch.is-bad { color: #c62828; background: #ffe4e4; border-radius: 4px; }
+.type-label { display: grid; gap: 6px; font-weight: 800; }
+.type-input {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.5;
+  resize: vertical;
+}
 .quiz-stage-up {
   position: relative;
   overflow: hidden;

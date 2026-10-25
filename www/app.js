@@ -106,6 +106,27 @@
     { count: Infinity, seconds: 3, points: 10, tables: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
   ];
   const OX_RANK_KEY = "family-hub-ox-rank";
+  const TYPE_RANK_KEY = "family-hub-type-rank";
+  const TYPE_PASSAGES = [
+    { subject: "국어", text: "하고 싶은 말을 한 문장으로 분명하게 적고, 문장 부호를 알맞게 써 봐요." },
+    { subject: "국어", text: "이야기를 읽고 누가 어디에서 무엇을 했는지 차례대로 말해 봐요." },
+    { subject: "국어", text: "듣는 사람을 생각하면 높임말을 골라 쓸 수 있어요." },
+    { subject: "국어", text: "시를 읽을 때는 느낌을 살려 천천히 띄어 읽어요." },
+    { subject: "사회", text: "우리 동네에는 학교와 병원, 시장처럼 생활에 필요한 곳이 있어요." },
+    { subject: "사회", text: "지도에서 위쪽은 북쪽이고 오른쪽은 동쪽이에요." },
+    { subject: "사회", text: "선거에서는 한 사람이 한 표를 가지고, 그 표의 가치는 같아요." },
+    { subject: "사회", text: "계절이 바뀌면 입는 옷과 먹는 음식도 달라져요." },
+    { subject: "사회", text: "옛날 사람들은 물 가까운 곳에서 농사를 지으며 마을을 이루었어요." },
+    { subject: "사회", text: "공공장소에서는 차례를 지키고 다른 사람을 배려해요." },
+    { subject: "과학", text: "물은 차가워지면 얼음이 되고, 뜨거워지면 수증기가 돼요." },
+    { subject: "과학", text: "식물은 뿌리로 물을 빨아들이고 잎에서 빛을 받아 양분을 만들어요." },
+    { subject: "과학", text: "자석은 철을 끌어당기고, 같은 극끼리는 서로 밀어내요." },
+    { subject: "과학", text: "소리는 물체가 떨릴 때 생기며 공기를 통해 귀까지 전달돼요." },
+    { subject: "과학", text: "지구가 하루에 한 바퀴 돌아서 낮과 밤이 바뀌어요." },
+    { subject: "과학", text: "동물의 생김새는 먹이를 구하고 몸을 지키는 데 도움이 돼요." },
+    { subject: "과학", text: "스위치가 닫히면 전기가 흘러 전구에 불이 켜져요." },
+    { subject: "과학", text: "흙 속에는 작은 생물이 살고, 그 생물이 흙을 기름지게 해요." },
+  ];
   const OX_FETCH_AMOUNT = 6;
   const POKE_TYPE_KO = {
     normal: "노말",
@@ -240,6 +261,23 @@
       endReason: "",
     },
     oxRank: [],
+    typeGame: {
+      subject: "",
+      text: "",
+      composing: false,
+      startedAt: 0,
+    },
+    typeSession: {
+      phase: "setup",
+      playerId: "jaesang",
+      playerName: "",
+      errors: 0,
+      score: 0,
+      cpm: 0,
+      accuracy: 0,
+      elapsedMs: 0,
+    },
+    typeRank: [],
     cloudHydrated: false,
     pets: normalizePets(null),
     profiles: normalizeProfiles(null),
@@ -332,6 +370,7 @@
   let timesAdvanceTimeout = null;
   let oxTimerId = null;
   let oxAdvanceTimeout = null;
+  let typeTimerId = null;
   let oxQueue = [];
   let oxFetchPromise = null;
   let schoolLunchPromise = null;
@@ -404,6 +443,7 @@
       payload.pokeRank = state.pokeRank;
       payload.timesRank = state.timesRank;
       payload.oxRank = state.oxRank;
+      payload.typeRank = state.typeRank;
     }
     return payload;
   }
@@ -454,6 +494,16 @@
     }
   }
 
+  function readLocalTypeRank() {
+    try {
+      const raw = localStorage.getItem(TYPE_RANK_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return normalizeOxRank(list);
+    } catch (_) {
+      return [];
+    }
+  }
+
   function readLocalOxRank() {
     try {
       const raw = localStorage.getItem(OX_RANK_KEY);
@@ -492,6 +542,7 @@
       localStorage.setItem(POKE_RANK_KEY, JSON.stringify(state.pokeRank));
       localStorage.setItem(TIMES_RANK_KEY, JSON.stringify(state.timesRank));
       localStorage.setItem(OX_RANK_KEY, JSON.stringify(state.oxRank));
+      localStorage.setItem(TYPE_RANK_KEY, JSON.stringify(state.typeRank));
     } catch (_) {
       /* ignore */
     }
@@ -501,12 +552,14 @@
     state.pokeRank = mergeRankLists(state.pokeRank, readLocalPokeRank());
     state.timesRank = mergeRankLists(state.timesRank, readLocalTimesRank());
     state.oxRank = mergeRankLists(state.oxRank, readLocalOxRank());
+    state.typeRank = mergeRankLists(state.typeRank, readLocalTypeRank());
   }
 
   function mergeRemoteRanks(data) {
     state.pokeRank = mergeRankLists(state.pokeRank, normalizePokeRank(data?.pokeRank));
     state.timesRank = mergeRankLists(state.timesRank, normalizeTimesRank(data?.timesRank));
     state.oxRank = mergeRankLists(state.oxRank, normalizeOxRank(data?.oxRank));
+    state.typeRank = mergeRankLists(state.typeRank, normalizeOxRank(data?.typeRank));
     persistLocalRanks();
   }
 
@@ -514,7 +567,8 @@
     return (
       ranksNeedUpload(state.pokeRank, normalizePokeRank(data?.pokeRank)) ||
       ranksNeedUpload(state.timesRank, normalizeTimesRank(data?.timesRank)) ||
-      ranksNeedUpload(state.oxRank, normalizeOxRank(data?.oxRank))
+      ranksNeedUpload(state.oxRank, normalizeOxRank(data?.oxRank)) ||
+      ranksNeedUpload(state.typeRank, normalizeOxRank(data?.typeRank))
     );
   }
 
@@ -4001,8 +4055,294 @@
     resolveOxAnswer(picked === g.answer, picked);
   }
 
+  function typeGraphemes(value) {
+    return Array.from(String(value || "").normalize("NFC"));
+  }
+
+  function clearTypeTimer() {
+    if (typeTimerId != null) {
+      clearInterval(typeTimerId);
+      typeTimerId = null;
+    }
+  }
+
+  function typeElapsedMs() {
+    const started = state.typeGame.startedAt;
+    if (!started) return 0;
+    return Math.max(0, Date.now() - started);
+  }
+
+  function typeStats(correct, errors, elapsedMs) {
+    const seconds = Math.max(elapsedMs / 1000, correct > 0 ? 0.4 : 0);
+    const cpm = correct > 0 && elapsedMs > 0 ? Math.round((correct / seconds) * 60) : 0;
+    const accuracy = correct + errors > 0 ? correct / (correct + errors) : 1;
+    const score = Math.round(cpm * accuracy);
+    return { cpm, accuracy, score };
+  }
+
+  function pickTypePassage() {
+    const current = state.typeGame.text;
+    const pool = TYPE_PASSAGES.filter((p) => p.text !== current);
+    const list = pool.length ? pool : TYPE_PASSAGES;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function typePassageHtml(value) {
+    const target = typeGraphemes(state.typeGame.text);
+    const typed = typeGraphemes(value);
+    let matched = 0;
+    while (matched < typed.length && matched < target.length && typed[matched] === target[matched]) matched += 1;
+    return target
+      .map((ch, i) => {
+        let cls = "type-ch";
+        if (i < matched) cls += " is-done";
+        else if (i === matched) cls += " is-now";
+        if (i < typed.length && typed[i] !== target[i]) cls += " is-bad";
+        const shown = ch === " " ? " " : esc(ch);
+        return `<span class="${cls}">${shown}</span>`;
+      })
+      .join("");
+  }
+
+  function updateTypeProgress(rawValue) {
+    const passage = document.getElementById("type-passage");
+    const stats = document.getElementById("type-live-stats");
+    if (!passage) return;
+    const value = String(rawValue || "");
+    passage.innerHTML = typePassageHtml(value);
+    const correct = Math.min(typeGraphemes(value).length, typeGraphemes(state.typeGame.text).length);
+    const matched = (() => {
+      const target = typeGraphemes(state.typeGame.text);
+      const typed = typeGraphemes(value);
+      let n = 0;
+      while (n < typed.length && n < target.length && typed[n] === target[n]) n += 1;
+      return n;
+    })();
+    const live = typeStats(matched, state.typeSession.errors, typeElapsedMs());
+    if (stats) {
+      const acc = Math.round(live.accuracy * 100);
+      stats.textContent = `시간 ${(typeElapsedMs() / 1000).toFixed(1)}초 · 분당 ${live.cpm}자 · 정확도 ${acc}% · 오타 ${state.typeSession.errors}`;
+    }
+    return matched;
+  }
+
+  function finishTypeRound() {
+    if (state.typeSession.phase !== "playing") return;
+    clearTypeTimer();
+    const correct = typeGraphemes(state.typeGame.text).length;
+    const stats = typeStats(correct, state.typeSession.errors, typeElapsedMs());
+    state.typeSession.elapsedMs = typeElapsedMs();
+    state.typeSession.cpm = stats.cpm;
+    state.typeSession.accuracy = stats.accuracy;
+    state.typeSession.score = stats.score;
+    state.typeSession.phase = "ended";
+    state.typeRank.push({
+      name: state.typeSession.playerName,
+      score: stats.score,
+      rounds: correct,
+      reason: `${stats.cpm}타 ${Math.round(stats.accuracy * 100)}%`,
+      at: new Date().toISOString(),
+    });
+    if (state.typeRank.length > 100) state.typeRank = state.typeRank.slice(-100);
+    persistLocalRanks();
+    save();
+    renderTypeGame();
+    toast(`${stats.score}점 · 분당 ${stats.cpm}자`);
+  }
+
+  function handleTypeInput(el) {
+    const s = state.typeSession;
+    if (s.phase !== "playing" || !el) return;
+    if (!state.typeGame.startedAt && el.value) {
+      state.typeGame.startedAt = Date.now();
+      clearTypeTimer();
+      typeTimerId = setInterval(() => {
+        const input = document.getElementById("type-input");
+        if (state.typeSession.phase === "playing") updateTypeProgress(input ? input.value : "");
+      }, 200);
+    }
+    if (state.typeGame.composing) {
+      updateTypeProgress(el.value);
+      return;
+    }
+    const target = typeGraphemes(state.typeGame.text);
+    const typed = typeGraphemes(el.value);
+    let matched = 0;
+    while (matched < typed.length && matched < target.length && typed[matched] === target[matched]) matched += 1;
+    if (typed.length > matched) {
+      s.errors += typed.length - matched;
+      el.value = target.slice(0, matched).join("");
+    }
+    updateTypeProgress(el.value);
+    if (matched === target.length && typeGraphemes(el.value).length === target.length) finishTypeRound();
+  }
+
+  function bindTypeInput(el) {
+    if (!el || el.dataset.bound === "1") return;
+    el.dataset.bound = "1";
+    el.addEventListener("compositionstart", () => {
+      state.typeGame.composing = true;
+    });
+    el.addEventListener("compositionend", () => {
+      state.typeGame.composing = false;
+      handleTypeInput(el);
+    });
+    el.addEventListener("input", () => handleTypeInput(el));
+    el.addEventListener("paste", (e) => e.preventDefault());
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") e.preventDefault();
+    });
+  }
+
+  function renderTypeSetupHtml() {
+    const s = state.typeSession;
+    const opts = POKE_PLAYER_OPTIONS.map(
+      (p) =>
+        `<label class="check-row poke-player-opt">
+          <input type="radio" name="playerId" value="${p.id}" ${p.id === s.playerId ? "checked" : ""} />
+          <span>${esc(p.name)}</span>
+        </label>`
+    ).join("");
+    return `
+      <div class="poke-card poke-setup">
+        <h3 class="poke-setup-title">참가자 선택</h3>
+        <form id="type-setup-form" class="stack" action="#" method="post">
+          <div class="poke-player-list">${opts}</div>
+          <label id="type-other-wrap" class="poke-other-wrap" style="${s.playerId === "other" ? "" : "display:none"}">
+            이름
+            <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
+          </label>
+          <p class="hint">점수 = 분당 글자 수 × 정확도. 오타가 많을수록 정확도가 낮아져요.<br/>교과서 원문은 공개 API가 없어서, 초등 국어·사회·과학 주제로 적은 짧은 글을 사용해요.</p>
+          <div class="poke-actions">
+            <button class="primary" type="button" id="type-start-session">게임 시작</button>
+            <button class="primary type-open-rank-btn" type="button">순위 보기</button>
+          </div>
+        </form>
+      </div>`;
+  }
+
+  function typeRankListHtml() {
+    const sorted = [...state.typeRank].sort((a, b) => b.score - a.score || String(b.at || "").localeCompare(String(a.at || "")));
+    const board = sorted.slice(0, QUIZ_RANK_TOP);
+    if (!board.length) return `<li class="poke-rank-empty">아직 기록이 없어요.</li>`;
+    return board
+      .map(
+        (e, i) => `<li class="poke-rank-row rank-${i + 1}">
+          <span class="poke-rank-num">${pokeRankMedal(i + 1)}</span>
+          <span class="poke-rank-name">${esc(e.name)}</span>
+          <span class="poke-rank-score">${e.score}점</span>
+        </li>`
+      )
+      .join("");
+  }
+
+  function openTypeRankModal() {
+    openModal(`
+      <div class="poke-rank-modal">
+        <h3 class="poke-setup-title">타자왕 Rank TOP ${QUIZ_RANK_TOP}</h3>
+        <p class="hint">가족 공유 순위입니다. 점수가 높은 순으로 보여요.</p>
+        <ol class="poke-rank-list">${typeRankListHtml()}</ol>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">닫기</button>
+        </div>
+      </div>
+    `);
+  }
+
+  function renderTypeRankHtml() {
+    const s = state.typeSession;
+    const acc = Math.round((s.accuracy || 0) * 100);
+    return `
+      <div class="poke-card poke-rank-card">
+        <h3 class="poke-setup-title">타자 완료</h3>
+        <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score}점</p>
+        <p class="hint">분당 ${s.cpm}자 · 정확도 ${acc}% · 오타 ${s.errors} · ${(s.elapsedMs / 1000).toFixed(1)}초</p>
+        <h4 class="poke-rank-heading">Rank TOP ${QUIZ_RANK_TOP}</h4>
+        <ol class="poke-rank-list">${typeRankListHtml()}</ol>
+        <div class="poke-actions">
+          <button class="primary" type="button" id="type-play-again">다시 하기</button>
+          <button class="primary type-open-rank-btn" type="button">순위 보기</button>
+        </div>
+      </div>`;
+  }
+
+  function renderTypeGame() {
+    const root = $("#type-game-root");
+    if (!root) return;
+    const s = state.typeSession;
+    if (s.phase === "setup") {
+      root.innerHTML = renderTypeSetupHtml();
+      return;
+    }
+    if (s.phase === "ended") {
+      root.innerHTML = renderTypeRankHtml();
+      return;
+    }
+    if (document.getElementById("type-input")) {
+      updateTypeProgress(document.getElementById("type-input").value);
+      return;
+    }
+    root.innerHTML = `
+      <div class="poke-card type-card">
+        <p class="type-subject">${esc(state.typeGame.subject)}</p>
+        <p class="type-passage" id="type-passage">${typePassageHtml("")}</p>
+        <label class="type-label">따라 입력
+          <textarea id="type-input" class="type-input" rows="3" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="여기부터 입력하세요"></textarea>
+        </label>
+        <p class="hint" id="type-live-stats">첫 글자를 입력하면 시간이 시작돼요.</p>
+      </div>`;
+    const input = document.getElementById("type-input");
+    bindTypeInput(input);
+    input?.focus();
+  }
+
+  function resetTypeToSetup() {
+    clearTypeTimer();
+    state.typeSession = {
+      phase: "setup",
+      playerId: state.typeSession.playerId || "jaesang",
+      playerName: "",
+      errors: 0,
+      score: 0,
+      cpm: 0,
+      accuracy: 0,
+      elapsedMs: 0,
+    };
+    state.typeGame.composing = false;
+    state.typeGame.startedAt = 0;
+    renderTypeGame();
+  }
+
+  function startTypeSession(playerId, customName) {
+    const opt = POKE_PLAYER_OPTIONS.find((p) => p.id === playerId) || POKE_PLAYER_OPTIONS[0];
+    let playerName = opt.name;
+    if (playerId === "other") {
+      playerName = String(customName || "").trim();
+      if (!playerName) return toast("기타를 선택했으면 이름을 입력해 주세요.");
+    }
+    const passage = pickTypePassage();
+    clearTypeTimer();
+    state.typeGame = {
+      subject: passage.subject,
+      text: passage.text,
+      composing: false,
+      startedAt: 0,
+    };
+    state.typeSession = {
+      phase: "playing",
+      playerId,
+      playerName,
+      errors: 0,
+      score: 0,
+      cpm: 0,
+      accuracy: 1,
+      elapsedMs: 0,
+    };
+    renderTypeGame();
+  }
+
   function setActiveGame(gameId) {
-    const next = gameId === "times" || gameId === "poke" || gameId === "ox" ? gameId : null;
+    const next = gameId === "times" || gameId === "poke" || gameId === "ox" || gameId === "type" ? gameId : null;
     if (state.activeGame === next) {
       renderGameTab();
       return;
@@ -4022,6 +4362,8 @@
       clearOxTimer();
       clearOxAdvance();
     }
+    if (state.typeSession.phase === "playing") resetTypeToSetup();
+    else clearTypeTimer();
     state.activeGame = next;
     renderGameTab();
   }
@@ -4032,11 +4374,13 @@
     const pokePanel = $("#game-panel-poke");
     const timesPanel = $("#game-panel-times");
     const oxPanel = $("#game-panel-ox");
-    const inGame = active === "poke" || active === "times" || active === "ox";
+    const typePanel = $("#game-panel-type");
+    const inGame = active === "poke" || active === "times" || active === "ox" || active === "type";
     if (menu) menu.hidden = inGame;
     if (pokePanel) pokePanel.hidden = active !== "poke";
     if (timesPanel) timesPanel.hidden = active !== "times";
     if (oxPanel) oxPanel.hidden = active !== "ox";
+    if (typePanel) typePanel.hidden = active !== "type";
     if (active === "poke") {
       renderPokeGame();
       ensurePokeNamePool();
@@ -4045,6 +4389,8 @@
     } else if (active === "ox") {
       renderOxGame();
       ensurePokeNamePool();
+    } else if (active === "type") {
+      renderTypeGame();
     }
   }
 
@@ -4469,6 +4815,13 @@
         state.oxGame.question = "";
         state.oxGame.stageUp = null;
       }
+      if (state.typeSession.phase === "playing") {
+        clearTypeTimer();
+        state.typeSession.phase = "setup";
+        state.typeSession.errors = 0;
+        state.typeSession.score = 0;
+        state.typeGame.startedAt = 0;
+      }
       state.activeGame = null;
     }
     render();
@@ -4704,7 +5057,7 @@
       if (e.target.id === "poke-open-rank" || e.target.closest(".poke-open-rank-btn")) openPokeRankModal();
       const pokeChoice = e.target.closest("[data-poke-choice]");
       if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
-      if (e.target.id === "game-back-menu" || e.target.id === "game-back-menu-times" || e.target.id === "game-back-menu-ox") {
+      if (e.target.id === "game-back-menu" || e.target.id === "game-back-menu-times" || e.target.id === "game-back-menu-ox" || e.target.id === "game-back-menu-type") {
         setActiveGame(null);
       }
       const gamePick = e.target.closest("[data-game]");
@@ -4751,6 +5104,14 @@
       if (e.target.id === "ox-retry-btn") loadOxQuestion();
       if (e.target.id === "ox-back-setup" || e.target.id === "ox-play-again") resetOxToSetup();
       if (e.target.id === "ox-open-rank" || e.target.closest(".ox-open-rank-btn")) openOxRankModal();
+      if (e.target.id === "type-start-session") {
+        const form = document.getElementById("type-setup-form");
+        if (!form) return;
+        const fd = new FormData(form);
+        startTypeSession(fd.get("playerId") || "jaesang", fd.get("customName"));
+      }
+      if (e.target.id === "type-play-again") startTypeSession(state.typeSession.playerId, state.typeSession.playerName);
+      if (e.target.id === "type-open-rank" || e.target.closest(".type-open-rank-btn")) openTypeRankModal();
       const oxChoice = e.target.closest("[data-ox-choice]");
       if (oxChoice) pickOxChoice(oxChoice.dataset.oxChoice);
       if (e.target.id === "save-rates") {
@@ -4941,6 +5302,11 @@
         const wrap = $("#ox-other-wrap");
         if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
       }
+      if (e.target.name === "playerId" && e.target.closest("#type-setup-form")) {
+        state.typeSession.playerId = e.target.value;
+        const wrap = $("#type-other-wrap");
+        if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
+      }
       if (e.target.name === "allDay") {
         const wrap = $("#time-fields");
         if (wrap) wrap.style.display = e.target.checked ? "none" : "";
@@ -4994,7 +5360,7 @@
     document.addEventListener("submit", async (e) => {
       const formId = e.target && e.target.id;
       const isComment = e.target && e.target.classList && e.target.classList.contains("comment-form");
-      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form", "pet-weight-form", "intro-settings-form"].includes(formId) && !isComment) return;
+      if (!["event-form", "stamp-form", "pin-form", "rates-form", "post-form", "pet-weight-form", "intro-settings-form", "type-setup-form"].includes(formId) && !isComment) return;
       e.preventDefault();
       if (formId === "event-form") {
         saveEventFromForm(e.target);
@@ -5007,6 +5373,10 @@
       }
       if (formId === "pet-weight-form") savePetWeightFromForm(e.target);
       if (formId === "intro-settings-form") saveIntroSettings();
+      if (formId === "type-setup-form") {
+        const fd = new FormData(e.target);
+        startTypeSession(fd.get("playerId") || "jaesang", fd.get("customName"));
+      }
       if (isComment) {
         saveCommentFromForm(e.target);
       }
