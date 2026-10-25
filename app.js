@@ -4073,8 +4073,8 @@
   }
 
   function typeStats(correct, errors, elapsedMs) {
-    const seconds = Math.max(elapsedMs / 1000, correct > 0 ? 0.4 : 0);
-    const cpm = correct > 0 && elapsedMs > 0 ? Math.round((correct / seconds) * 60) : 0;
+    const seconds = Math.max(elapsedMs / 1000, 1);
+    const cpm = correct > 0 && elapsedMs >= 1000 ? Math.round((correct / seconds) * 60) : 0;
     const accuracy = correct + errors > 0 ? correct / (correct + errors) : 1;
     const score = Math.round(cpm * accuracy);
     return { cpm, accuracy, score };
