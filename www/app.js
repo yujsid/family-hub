@@ -105,6 +105,14 @@
     { count: 10, seconds: 4, points: 9, tables: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
     { count: Infinity, seconds: 3, points: 10, tables: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
   ];
+  const MATH_RANK_KEY = "family-hub-math-rank";
+  const MATH_STAGES = [
+    { count: 10, seconds: 5, points: 2, kinds: ["add1", "sub1"], label: "한 자리 덧셈·뺄셈" },
+    { count: 10, seconds: 5, points: 4, kinds: ["add21"], label: "두 자리 + 한 자리" },
+    { count: 10, seconds: 5, points: 6, kinds: ["sub21"], label: "두 자리 − 한 자리" },
+    { count: 10, seconds: 5, points: 8, kinds: ["add2", "sub2"], label: "두 자리 덧셈·뺄셈" },
+    { count: Infinity, seconds: 5, points: 10, kinds: ["add3", "sub3"], label: "세 자리 덧셈·뺄셈" },
+  ];
   const OX_RANK_KEY = "family-hub-ox-rank";
   const TYPE_RANK_KEY = "family-hub-type-rank";
   const TYPE_PASSAGES = [
@@ -237,6 +245,29 @@
       endReason: "",
     },
     timesRank: [],
+    mathGame: {
+      answered: false,
+      picked: null,
+      a: null,
+      b: null,
+      op: "+",
+      answer: null,
+      choices: [],
+      message: "",
+      countdown: 0,
+      feedback: "",
+      stageUp: null,
+    },
+    mathSession: {
+      phase: "setup",
+      playerId: "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    },
+    mathRank: [],
     oxGame: {
       loading: false,
       answered: false,
@@ -368,6 +399,8 @@
   let pokeAdvanceTimeout = null;
   let timesTimerId = null;
   let timesAdvanceTimeout = null;
+  let mathTimerId = null;
+  let mathAdvanceTimeout = null;
   let oxTimerId = null;
   let oxAdvanceTimeout = null;
   let typeTimerId = null;
@@ -442,6 +475,7 @@
     if (state.cloudHydrated) {
       payload.pokeRank = state.pokeRank;
       payload.timesRank = state.timesRank;
+      payload.mathRank = state.mathRank;
       payload.oxRank = state.oxRank;
       payload.typeRank = state.typeRank;
     }
@@ -504,6 +538,16 @@
     }
   }
 
+  function readLocalMathRank() {
+    try {
+      const raw = localStorage.getItem(MATH_RANK_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return normalizeGameRank(list);
+    } catch (_) {
+      return [];
+    }
+  }
+
   function readLocalOxRank() {
     try {
       const raw = localStorage.getItem(OX_RANK_KEY);
@@ -541,6 +585,7 @@
     try {
       localStorage.setItem(POKE_RANK_KEY, JSON.stringify(state.pokeRank));
       localStorage.setItem(TIMES_RANK_KEY, JSON.stringify(state.timesRank));
+      localStorage.setItem(MATH_RANK_KEY, JSON.stringify(state.mathRank));
       localStorage.setItem(OX_RANK_KEY, JSON.stringify(state.oxRank));
       localStorage.setItem(TYPE_RANK_KEY, JSON.stringify(state.typeRank));
     } catch (_) {
@@ -551,6 +596,7 @@
   function hydrateLocalRanks() {
     state.pokeRank = mergeRankLists(state.pokeRank, readLocalPokeRank());
     state.timesRank = mergeRankLists(state.timesRank, readLocalTimesRank());
+    state.mathRank = mergeRankLists(state.mathRank, readLocalMathRank());
     state.oxRank = mergeRankLists(state.oxRank, readLocalOxRank());
     state.typeRank = mergeRankLists(state.typeRank, readLocalTypeRank());
   }
@@ -558,6 +604,7 @@
   function mergeRemoteRanks(data) {
     state.pokeRank = mergeRankLists(state.pokeRank, normalizePokeRank(data?.pokeRank));
     state.timesRank = mergeRankLists(state.timesRank, normalizeTimesRank(data?.timesRank));
+    state.mathRank = mergeRankLists(state.mathRank, normalizeGameRank(data?.mathRank));
     state.oxRank = mergeRankLists(state.oxRank, normalizeOxRank(data?.oxRank));
     state.typeRank = mergeRankLists(state.typeRank, normalizeOxRank(data?.typeRank));
     persistLocalRanks();
@@ -567,6 +614,7 @@
     return (
       ranksNeedUpload(state.pokeRank, normalizePokeRank(data?.pokeRank)) ||
       ranksNeedUpload(state.timesRank, normalizeTimesRank(data?.timesRank)) ||
+      ranksNeedUpload(state.mathRank, normalizeGameRank(data?.mathRank)) ||
       ranksNeedUpload(state.oxRank, normalizeOxRank(data?.oxRank)) ||
       ranksNeedUpload(state.typeRank, normalizeOxRank(data?.typeRank))
     );
@@ -2559,7 +2607,7 @@
       <div class="poke-card quiz-stage-up">
         <p class="quiz-stage-up-kicker">LEVEL UP</p>
         <p class="quiz-stage-up-num">${stageUp.stage}단계</p>
-        <p class="quiz-stage-up-detail">제한시간 <strong>${stageUp.seconds}초</strong>${
+        <p class="quiz-stage-up-detail">${stageUp.label ? `${esc(stageUp.label)}<br/>` : ""}제한시간 <strong>${stageUp.seconds}초</strong>${
           stageUp.points ? ` · 문제당 <strong>${stageUp.points}점</strong>` : ""
         }</p>
         <p class="hint">조금만 더 집중해 보세요!</p>
@@ -3508,6 +3556,469 @@
     resolveTimesAnswer(n === g.answer, n);
   }
 
+  function mathStageIndex(answeredCount) {
+    let remaining = Math.max(0, answeredCount);
+    for (let i = 0; i < MATH_STAGES.length; i++) {
+      const count = MATH_STAGES[i].count;
+      if (!Number.isFinite(count) || remaining < count) return i;
+      remaining -= count;
+    }
+    return MATH_STAGES.length - 1;
+  }
+
+  function mathStageConfig(answeredCount) {
+    return MATH_STAGES[mathStageIndex(answeredCount)];
+  }
+
+  function mathSecondsForRound(answeredCount) {
+    return mathStageConfig(answeredCount).seconds;
+  }
+
+  function mathPointsForRound(answeredCount) {
+    return mathStageConfig(answeredCount).points;
+  }
+
+  function mathStageNumber(answeredCount) {
+    return mathStageIndex(answeredCount) + 1;
+  }
+
+  function didMathStageUp(answeredCountAfter) {
+    if (answeredCountAfter <= 0) return false;
+    return mathStageIndex(answeredCountAfter) > mathStageIndex(answeredCountAfter - 1);
+  }
+
+  function mathRulesHintHtml() {
+    return `1회 틀리면 탈락 · 모든 단계 5초<br/>1단계 한 자리 덧셈·뺄셈 10문제 2점 → 2단계 두 자리+한 자리 10문제 4점 → 3단계 두 자리−한 자리 10문제 6점 → 4단계 두 자리 덧셈·뺄셈 10문제 8점 → 5단계 세 자리 덧셈·뺄셈 · 실패할 때까지 10점`;
+  }
+
+  function makeMathProblem(kind) {
+    if (kind === "add1") {
+      let a = randInt(0, 9);
+      let b = randInt(0, 9);
+      if (a === 0 && b === 0) b = randInt(1, 9);
+      return { a, b, op: "+", answer: a + b };
+    }
+    if (kind === "sub1") {
+      const a = randInt(0, 9);
+      const b = randInt(0, a);
+      return { a, b, op: "−", answer: a - b };
+    }
+    if (kind === "add21") {
+      const a = randInt(10, 99);
+      const b = randInt(0, 9);
+      return { a, b, op: "+", answer: a + b };
+    }
+    if (kind === "sub21") {
+      const a = randInt(10, 99);
+      const b = randInt(0, 9);
+      return { a, b, op: "−", answer: a - b };
+    }
+    if (kind === "add2") {
+      const a = randInt(10, 99);
+      const b = randInt(10, 99);
+      return { a, b, op: "+", answer: a + b };
+    }
+    if (kind === "sub2") {
+      let a = randInt(10, 99);
+      let b = randInt(10, 99);
+      if (b > a) [a, b] = [b, a];
+      return { a, b, op: "−", answer: a - b };
+    }
+    if (kind === "add3") {
+      const a = randInt(100, 999);
+      const b = randInt(100, 999);
+      return { a, b, op: "+", answer: a + b };
+    }
+    let a = randInt(100, 999);
+    let b = randInt(100, 999);
+    if (b > a) [a, b] = [b, a];
+    return { a, b, op: "−", answer: a - b };
+  }
+
+  function buildMathChoices(answer) {
+    const used = new Set([answer]);
+    const span = answer >= 100 ? 40 : answer >= 10 ? 12 : 5;
+    const deltas = [];
+    for (let d = 1; d <= span; d++) deltas.push(d, -d);
+    const wrong = [];
+    for (const delta of shuffleArray(deltas)) {
+      if (wrong.length >= 3) break;
+      const n = answer + delta;
+      if (!Number.isInteger(n) || n < 0 || used.has(n)) continue;
+      wrong.push(n);
+      used.add(n);
+    }
+    let guard = 0;
+    while (wrong.length < 3 && guard++ < 40) {
+      const n = answer + randInt(1, span);
+      if (used.has(n)) continue;
+      wrong.push(n);
+      used.add(n);
+    }
+    return shuffleArray([answer, ...wrong.slice(0, 3)]);
+  }
+
+  function addMathRankEntry(entry) {
+    state.mathRank.push({
+      name: String(entry?.name || "").trim(),
+      score: Number(entry?.score) || 0,
+      rounds: Number(entry?.rounds) || 0,
+      reason: String(entry?.reason || ""),
+      at: String(entry?.at || new Date().toISOString()),
+    });
+    if (state.mathRank.length > 100) state.mathRank = state.mathRank.slice(-100);
+    persistLocalRanks();
+    save();
+  }
+
+  function getMathRankBoard(limit = QUIZ_RANK_TOP) {
+    const sorted = [...state.mathRank].sort(
+      (a, b) => b.score - a.score || String(b.at || "").localeCompare(String(a.at || ""))
+    );
+    return limit ? sorted.slice(0, limit) : sorted;
+  }
+
+  function clearMathAdvance() {
+    if (mathAdvanceTimeout != null) {
+      clearTimeout(mathAdvanceTimeout);
+      mathAdvanceTimeout = null;
+    }
+  }
+
+  function clearMathTimer() {
+    if (mathTimerId != null) {
+      clearInterval(mathTimerId);
+      mathTimerId = null;
+    }
+  }
+
+  function refreshMathCountdownDom() {
+    const el = document.getElementById("math-countdown");
+    if (!el) return;
+    const g = state.mathGame;
+    el.textContent = `${g.countdown}초`;
+    el.classList.toggle("is-warn", g.countdown <= 2);
+  }
+
+  function startMathTimer() {
+    clearMathTimer();
+    const g = state.mathGame;
+    const s = state.mathSession;
+    g.countdown = mathSecondsForRound(s.round);
+    refreshMathCountdownDom();
+    mathTimerId = setInterval(() => {
+      if (s.phase !== "playing" || g.answered || g.answer == null) {
+        clearMathTimer();
+        return;
+      }
+      g.countdown -= 1;
+      if (g.countdown <= 0) {
+        clearMathTimer();
+        resolveMathAnswer(false, null);
+        return;
+      }
+      refreshMathCountdownDom();
+    }, 1000);
+  }
+
+  function scheduleMathAdvance() {
+    clearMathAdvance();
+    const g = state.mathGame;
+    const s = state.mathSession;
+    const isCorrect = g.picked === g.answer;
+    let delay = QUIZ_WRONG_DELAY_MS;
+    if (s.wrongCount >= QUIZ_MAX_WRONG) delay = QUIZ_FAIL_DELAY_MS;
+    else if (isCorrect) delay = QUIZ_CORRECT_DELAY_MS;
+    mathAdvanceTimeout = setTimeout(() => {
+      mathAdvanceTimeout = null;
+      if (s.phase !== "playing" || !g.answered) return;
+      if (s.wrongCount >= QUIZ_MAX_WRONG) endMathSession();
+      else if (isCorrect && didMathStageUp(s.round)) showMathStageUp();
+      else loadMathQuestion();
+    }, delay);
+  }
+
+  function showMathStageUp() {
+    const g = state.mathGame;
+    const s = state.mathSession;
+    clearMathTimer();
+    clearMathAdvance();
+    const cfg = mathStageConfig(s.round);
+    g.stageUp = {
+      stage: mathStageNumber(s.round),
+      seconds: cfg.seconds,
+      points: cfg.points,
+      label: cfg.label,
+    };
+    g.answer = null;
+    renderMathGame();
+    toast(`${g.stageUp.stage}단계! ${cfg.label} · ${cfg.seconds}초 · 문제당 ${cfg.points}점`);
+    mathAdvanceTimeout = setTimeout(() => {
+      mathAdvanceTimeout = null;
+      if (s.phase !== "playing") return;
+      g.stageUp = null;
+      loadMathQuestion();
+    }, QUIZ_STAGE_UP_MS);
+  }
+
+  function resolveMathAnswer(isCorrect, picked) {
+    const g = state.mathGame;
+    const s = state.mathSession;
+    if (s.phase !== "playing" || g.answer == null || g.answered) return;
+    clearMathTimer();
+    g.answered = true;
+    g.picked = picked;
+    const points = mathPointsForRound(s.round);
+    s.round += 1;
+    g.feedback = isCorrect ? "correct" : "wrong";
+    if (isCorrect) {
+      s.score += points;
+      g.message = `정답! +${points}점 🎉`;
+      toast(`정답! ${g.a} ${g.op} ${g.b} = ${g.answer}`);
+    } else {
+      s.wrongCount += 1;
+      if (picked == null) g.message = "시간 초과! ⏰";
+      else g.message = `"${picked}"(은)는 틀렸어요!`;
+      if (s.wrongCount >= QUIZ_MAX_WRONG) {
+        g.message = "틀려서 탈락! 💥";
+        s.endReason = "fail";
+      }
+      toast(`정답은 ${g.answer}입니다.`);
+    }
+    renderMathGame();
+    scheduleMathAdvance();
+  }
+
+  function mathRankListHtml() {
+    const board = getMathRankBoard();
+    if (!board.length) return `<li class="poke-rank-empty">아직 기록이 없어요.</li>`;
+    return board
+      .map(
+        (e, i) => `<li class="poke-rank-row rank-${i + 1}">
+          <span class="poke-rank-num">${pokeRankMedal(i + 1)}</span>
+          <span class="poke-rank-name">${esc(e.name)}</span>
+          <span class="poke-rank-score">${e.score}점</span>
+        </li>`
+      )
+      .join("");
+  }
+
+  function openMathRankModal() {
+    openModal(`
+      <div class="poke-rank-modal">
+        <h3 class="poke-setup-title">덧셈뺄셈 Rank TOP ${QUIZ_RANK_TOP}</h3>
+        <p class="hint">가족 공유 순위입니다. 점수가 높은 순으로 보여요.</p>
+        <ol class="poke-rank-list">${mathRankListHtml()}</ol>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">닫기</button>
+        </div>
+      </div>
+    `);
+  }
+
+  function renderMathSetupHtml() {
+    const s = state.mathSession;
+    const opts = POKE_PLAYER_OPTIONS.map(
+      (p) =>
+        `<label class="check-row poke-player-opt">
+          <input type="radio" name="playerId" value="${p.id}" ${p.id === s.playerId ? "checked" : ""} />
+          <span>${esc(p.name)}</span>
+        </label>`
+    ).join("");
+    return `
+      <div class="poke-card poke-setup">
+        <h3 class="poke-setup-title">참가자 선택</h3>
+        <form id="math-setup-form" class="stack" action="#" method="post">
+          <div class="poke-player-list">${opts}</div>
+          <label id="math-other-wrap" class="poke-other-wrap" style="${s.playerId === "other" ? "" : "display:none"}">
+            이름
+            <input name="customName" maxlength="12" placeholder="이름을 입력하세요" />
+          </label>
+          <p class="hint">${mathRulesHintHtml()}</p>
+          <div class="poke-actions">
+            <button class="primary" type="button" id="math-start-session">게임 시작</button>
+            <button class="primary math-open-rank-btn" type="button">순위 보기</button>
+          </div>
+        </form>
+      </div>`;
+  }
+
+  function renderMathRankHtml() {
+    const s = state.mathSession;
+    return `
+      <div class="poke-card poke-rank-card">
+        <h3 class="poke-setup-title">게임 종료</h3>
+        <p class="poke-last-result"><strong>${esc(s.playerName)}</strong> · ${s.score}점 · ${s.round}문제</p>
+        <p class="hint">틀려서 게임이 끝났어요.</p>
+        <h4 class="poke-rank-heading">Rank TOP ${QUIZ_RANK_TOP}</h4>
+        <ol class="poke-rank-list">${mathRankListHtml()}</ol>
+        <div class="poke-actions">
+          <button class="primary" type="button" id="math-play-again">다시 하기</button>
+          <button class="primary math-open-rank-btn" type="button">순위 보기</button>
+        </div>
+      </div>`;
+  }
+
+  function renderMathGame() {
+    const root = $("#math-game-root");
+    if (!root) return;
+    const s = state.mathSession;
+    if (s.phase === "setup") {
+      root.innerHTML = renderMathSetupHtml();
+      return;
+    }
+    if (s.phase === "ended") {
+      root.innerHTML = renderMathRankHtml();
+      return;
+    }
+    const g = state.mathGame;
+    if (g.stageUp) {
+      root.innerHTML = `
+        <div class="poke-scorebar">
+          <span>참가 <strong>${esc(s.playerName)}</strong></span>
+          <span>점수 <strong>${s.score}</strong></span>
+        </div>
+        ${quizStageUpHtml(g.stageUp)}`;
+      return;
+    }
+    if (g.answer == null) {
+      root.innerHTML = `<div class="poke-card"><p class="hint">문제를 준비하는 중…</p></div>`;
+      return;
+    }
+    const choiceHtml = (g.choices || [])
+      .map((n) => {
+        let cls = "poke-choice";
+        if (g.answered) {
+          if (n === g.answer) cls += " is-correct";
+          else if (n === g.picked) cls += " is-wrong";
+          else cls += " is-dim";
+        }
+        return `<button type="button" class="${cls}" data-math-choice="${n}" ${g.answered ? "disabled" : ""}>${n}</button>`;
+      })
+      .join("");
+    const sessionEnded = g.answered && s.wrongCount >= QUIZ_MAX_WRONG;
+    const stageRound = g.answered ? Math.max(0, s.round - 1) : s.round;
+    const limitSec = mathSecondsForRound(stageRound);
+    const cardFx = [
+      g.feedback ? `poke-card--${g.feedback}` : "",
+      !g.answered && g.countdown <= Math.min(2, limitSec) ? "poke-card--urgent" : "",
+      sessionEnded ? "poke-card--fail" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const countdownHtml = g.answered
+      ? ""
+      : `<span class="poke-countdown${g.countdown <= Math.min(2, limitSec) ? " is-warn" : ""}" id="math-countdown">${g.countdown || limitSec}초</span>`;
+    const scoreFx = g.feedback === "correct" ? " poke-score-pop" : "";
+    const eqFx = g.feedback === "correct" ? " is-pop" : g.feedback === "wrong" ? " is-shake" : "";
+    const prompt = g.answered ? `정답은 <strong>${g.answer}</strong>!` : "보기에서 정답을 골라 주세요";
+    root.innerHTML = `
+      <div class="poke-scorebar">
+        <span>참가 <strong>${esc(s.playerName)}</strong></span>
+        <span>단계 <strong>${mathStageNumber(stageRound)}</strong></span>
+        <span>문제 <strong>${g.answered ? s.round : s.round + 1}</strong>번째</span>
+        <span class="poke-score${scoreFx}">점수 <strong>${s.score}</strong></span>
+        ${countdownHtml}
+      </div>
+      <div class="poke-card ${cardFx}">
+        <div class="times-stage">
+          <div class="times-equation math-equation${eqFx}">${g.a} ${g.op} ${g.b} = ?</div>
+        </div>
+        <p class="poke-prompt">${prompt}</p>
+        ${g.message ? `<p class="poke-message poke-message--${g.feedback || "idle"}">${esc(g.message)}</p>` : ""}
+        <div class="poke-choices">${choiceHtml}</div>
+      </div>`;
+  }
+
+  function resetMathToSetup() {
+    clearMathTimer();
+    clearMathAdvance();
+    state.mathSession = {
+      phase: "setup",
+      playerId: state.mathSession.playerId || "jaesang",
+      playerName: "",
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    };
+    state.mathGame.answer = null;
+    state.mathGame.message = "";
+    state.mathGame.stageUp = null;
+    renderMathGame();
+  }
+
+  function startMathSession(playerId, customName) {
+    const opt = POKE_PLAYER_OPTIONS.find((p) => p.id === playerId) || POKE_PLAYER_OPTIONS[0];
+    let playerName = opt.name;
+    if (playerId === "other") {
+      playerName = String(customName || "").trim();
+      if (!playerName) return toast("기타를 선택했으면 이름을 입력해 주세요.");
+    }
+    state.mathSession = {
+      phase: "playing",
+      playerId,
+      playerName,
+      round: 0,
+      score: 0,
+      wrongCount: 0,
+      endReason: "",
+    };
+    loadMathQuestion();
+  }
+
+  function endMathSession() {
+    const s = state.mathSession;
+    if (s.phase !== "playing") return;
+    clearMathTimer();
+    clearMathAdvance();
+    if (!s.endReason) s.endReason = "fail";
+    addMathRankEntry({
+      name: s.playerName,
+      score: s.score,
+      rounds: s.round,
+      reason: s.endReason,
+      at: new Date().toISOString(),
+    });
+    s.phase = "ended";
+    state.mathGame.answer = null;
+    renderMathGame();
+  }
+
+  function loadMathQuestion() {
+    const g = state.mathGame;
+    const s = state.mathSession;
+    if (s.phase !== "playing") return;
+    clearMathTimer();
+    clearMathAdvance();
+    const kinds = mathStageConfig(s.round).kinds;
+    let problem = makeMathProblem(kinds[randInt(0, kinds.length - 1)]);
+    let guard = 0;
+    while (g.a === problem.a && g.b === problem.b && g.op === problem.op && guard++ < 12) {
+      problem = makeMathProblem(kinds[randInt(0, kinds.length - 1)]);
+    }
+    g.a = problem.a;
+    g.b = problem.b;
+    g.op = problem.op;
+    g.answer = problem.answer;
+    g.choices = buildMathChoices(problem.answer);
+    g.answered = false;
+    g.picked = null;
+    g.message = "";
+    g.feedback = "";
+    g.stageUp = null;
+    renderMathGame();
+    startMathTimer();
+  }
+
+  function pickMathChoice(value) {
+    const g = state.mathGame;
+    const s = state.mathSession;
+    if (s.phase !== "playing" || g.answer == null || g.answered) return;
+    const n = Number(value);
+    resolveMathAnswer(n === g.answer, n);
+  }
+
   function oxAnswerLabel(answer) {
     return answer === "True" ? "O · 참" : "X · 거짓";
   }
@@ -4342,7 +4853,7 @@
   }
 
   function setActiveGame(gameId) {
-    const next = gameId === "times" || gameId === "poke" || gameId === "ox" || gameId === "type" ? gameId : null;
+    const next = gameId === "times" || gameId === "poke" || gameId === "ox" || gameId === "type" || gameId === "math" ? gameId : null;
     if (state.activeGame === next) {
       renderGameTab();
       return;
@@ -4356,6 +4867,11 @@
     else {
       clearTimesTimer();
       clearTimesAdvance();
+    }
+    if (state.mathSession.phase === "playing") resetMathToSetup();
+    else {
+      clearMathTimer();
+      clearMathAdvance();
     }
     if (state.oxSession.phase === "playing") resetOxToSetup();
     else {
@@ -4373,12 +4889,14 @@
     const menu = $("#game-menu");
     const pokePanel = $("#game-panel-poke");
     const timesPanel = $("#game-panel-times");
+    const mathPanel = $("#game-panel-math");
     const oxPanel = $("#game-panel-ox");
     const typePanel = $("#game-panel-type");
-    const inGame = active === "poke" || active === "times" || active === "ox" || active === "type";
+    const inGame = active === "poke" || active === "times" || active === "math" || active === "ox" || active === "type";
     if (menu) menu.hidden = inGame;
     if (pokePanel) pokePanel.hidden = active !== "poke";
     if (timesPanel) timesPanel.hidden = active !== "times";
+    if (mathPanel) mathPanel.hidden = active !== "math";
     if (oxPanel) oxPanel.hidden = active !== "ox";
     if (typePanel) typePanel.hidden = active !== "type";
     if (active === "poke") {
@@ -4386,6 +4904,8 @@
       ensurePokeNamePool();
     } else if (active === "times") {
       renderTimesGame();
+    } else if (active === "math") {
+      renderMathGame();
     } else if (active === "ox") {
       renderOxGame();
       ensurePokeNamePool();
@@ -4804,6 +5324,16 @@
         state.timesSession.wrongCount = 0;
         state.timesGame.answer = null;
       }
+      if (state.mathSession.phase === "playing") {
+        clearMathTimer();
+        clearMathAdvance();
+        state.mathSession.phase = "setup";
+        state.mathSession.round = 0;
+        state.mathSession.score = 0;
+        state.mathSession.wrongCount = 0;
+        state.mathGame.answer = null;
+        state.mathGame.stageUp = null;
+      }
       if (state.oxSession.phase === "playing") {
         clearOxTimer();
         clearOxAdvance();
@@ -5057,7 +5587,7 @@
       if (e.target.id === "poke-open-rank" || e.target.closest(".poke-open-rank-btn")) openPokeRankModal();
       const pokeChoice = e.target.closest("[data-poke-choice]");
       if (pokeChoice) pickPokeChoice(pokeChoice.dataset.pokeChoice);
-      if (e.target.id === "game-back-menu" || e.target.id === "game-back-menu-times" || e.target.id === "game-back-menu-ox" || e.target.id === "game-back-menu-type") {
+      if (e.target.id === "game-back-menu" || e.target.id === "game-back-menu-times" || e.target.id === "game-back-menu-math" || e.target.id === "game-back-menu-ox" || e.target.id === "game-back-menu-type") {
         setActiveGame(null);
       }
       const gamePick = e.target.closest("[data-game]");
@@ -5074,6 +5604,16 @@
       if (e.target.id === "times-open-rank" || e.target.closest(".times-open-rank-btn")) openTimesRankModal();
       const timesChoice = e.target.closest("[data-times-choice]");
       if (timesChoice) pickTimesChoice(timesChoice.dataset.timesChoice);
+      if (e.target.id === "math-start-session") {
+        const form = document.getElementById("math-setup-form");
+        if (!form) return;
+        const fd = new FormData(form);
+        startMathSession(fd.get("playerId") || "jaesang", fd.get("customName"));
+      }
+      if (e.target.id === "math-play-again") resetMathToSetup();
+      if (e.target.id === "math-open-rank" || e.target.closest(".math-open-rank-btn")) openMathRankModal();
+      const mathChoice = e.target.closest("[data-math-choice]");
+      if (mathChoice) pickMathChoice(mathChoice.dataset.mathChoice);
       const introCard = e.target.closest("[data-intro-card]");
       if (introCard) {
         const id = introCard.dataset.introCard;
@@ -5295,6 +5835,11 @@
       if (e.target.name === "playerId" && e.target.closest("#times-setup-form")) {
         state.timesSession.playerId = e.target.value;
         const wrap = $("#times-other-wrap");
+        if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
+      }
+      if (e.target.name === "playerId" && e.target.closest("#math-setup-form")) {
+        state.mathSession.playerId = e.target.value;
+        const wrap = $("#math-other-wrap");
         if (wrap) wrap.style.display = e.target.value === "other" ? "" : "none";
       }
       if (e.target.name === "playerId" && e.target.closest("#ox-setup-form")) {

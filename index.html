@@ -21,8 +21,8 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=49" />
-  <link rel="stylesheet" href="theme-veggie.css?v=49" />
+  <link rel="stylesheet" href="styles.css?v=50" />
+  <link rel="stylesheet" href="theme-veggie.css?v=50" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -157,6 +157,7 @@
         <div class="game-menu-actions">
           <button type="button" class="primary game-menu-btn" data-game="poke">포켓몬 이름 맞추기</button>
           <button type="button" class="primary game-menu-btn" data-game="times">구구단 맞추기</button>
+          <button type="button" class="primary game-menu-btn" data-game="math">덧셈뺄셈 게임</button>
           <button type="button" class="primary game-menu-btn" data-game="ox">포켓몬 스피드 OX</button>
           <button type="button" class="primary game-menu-btn" data-game="type">핸드폰 타자왕</button>
         </div>
@@ -178,6 +179,15 @@
         </div>
         <p class="hint">1단계는 0·1·2·3·5단 5문제(5초, 5점)부터 시작하고, 단계가 올라갈수록 단과 점수가 늘어나요. 1회 틀리면 탈락입니다.</p>
         <div id="times-game-root" class="poke-game-root"></div>
+      </div>
+
+      <div id="game-panel-math" class="game-panel" hidden>
+        <div class="toolbar">
+          <h2 class="talk-heading">덧셈뺄셈 게임</h2>
+          <button id="game-back-menu-math" type="button">게임 선택</button>
+        </div>
+        <p class="hint">1단계는 한 자리 덧셈·뺄셈 10문제(5초, 2점)부터 시작해요. 단계가 올라갈수록 자릿수와 점수가 늘어나고, 1회 틀리면 탈락입니다.</p>
+        <div id="math-game-root" class="poke-game-root"></div>
       </div>
 
       <div id="game-panel-ox" class="game-panel" hidden>
@@ -258,7 +268,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=49"></script>
-  <script src="app.js?v=49"></script>
+  <script src="firebase-config.js?v=50"></script>
+  <script src="app.js?v=50"></script>
 </body>
 </html>
