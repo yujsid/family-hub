@@ -15,12 +15,12 @@
   ];
   const PERSON_EMOJI = { 아빠: "👨", 엄마: "👩", 딸: "👧", 아들: "👦" };
   const VEGGIES = {
-    jaesang: { veg: "땅콩", badge: "아빠", img: "img/char-peanut-dad.jpg", tone: "#a06a24", bg: "#fbefd6", desc: "든든하고 책임감 있는\n우리 가족의 든든한 버팀목" },
-    sinjeong: { veg: "고구마", badge: "엄마", img: "img/char-sweetpotato.jpg", tone: "#c0476d", bg: "#fce3e8", desc: "따뜻하고 다정한\n우리 가족의 에너지원" },
+    jaesang: { veg: "땅콩", badge: "아빠", img: "img/char-peanut-dad.jpg", imgStyled: "img/char-peanut-dad-glasses.jpg", tone: "#a06a24", bg: "#fbefd6", desc: "든든하고 책임감 있는\n우리 가족의 든든한 버팀목" },
+    sinjeong: { veg: "고구마", badge: "엄마", img: "img/char-sweetpotato.jpg", imgStyled: "img/char-sweetpotato-glasses.jpg", tone: "#c0476d", bg: "#fce3e8", desc: "따뜻하고 다정한\n우리 가족의 에너지원" },
     sua: { veg: "수박", badge: "딸", img: "img/char-watermelon.jpg", tone: "#3f8a3a", bg: "#e4f2dc", desc: "밝고 활발한\n우리 가족의 분위기 메이커" },
     sumin: { veg: "양파", badge: "아들", img: "img/char-onion.jpg", tone: "#3a67a3", bg: "#e2ebf8", desc: "순수하고 엉뚱한\n우리 가족의 귀염둥이" },
     peanut: { veg: "크레스티드 게코", badge: "반려동물", img: "img/char-gecko.jpg", tone: "#b07f16", bg: "#fdf2cf", desc: "조용하지만 특별한\n우리 가족의 작은 친구" },
-    chilbok: { veg: "실버푸들", badge: "반려동물", img: "img/char-poodle.jpg", tone: "#7656a8", bg: "#ece6f7", desc: "사랑스럽고 든든한\n우리 가족의 힐링 친구" },
+    chilbok: { veg: "실버푸들", badge: "반려동물", img: "img/char-poodle.jpg", imgStyled: "img/char-poodle-silver.jpg", tone: "#7656a8", bg: "#ece6f7", desc: "사랑스럽고 든든한\n우리 가족의 힐링 친구" },
   };
   const NAV_ICONS = {
     home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h5v-5.5h3V20h5V9.5"/>',
@@ -188,6 +188,7 @@
     schoolLunches: {},
     schoolLunchMeta: { loading: false, error: "", school: "", range: "" },
     pin: "1234",
+    charLook: "styled",
     categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
     rates: { ...DEFAULT_RATES },
     todoRate: 500,
@@ -470,6 +471,7 @@
       meals: state.meals,
       pets: state.pets,
       profiles: state.profiles,
+      charLook: state.charLook === "classic" ? "classic" : "styled",
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
     if (state.cloudHydrated) {
@@ -925,6 +927,7 @@
     mergeRemoteRanks(data);
     state.pets = normalizePets(data.pets);
     state.profiles = normalizeProfiles(data.profiles);
+    state.charLook = data.charLook === "classic" ? "classic" : "styled";
     const uploadRanks = localRanksNeedUpload(data);
     state.cloudHydrated = true;
     render();
@@ -2532,6 +2535,12 @@
     return n === 0 ? "오늘 생일! 🎂" : `D-${n}`;
   }
 
+  function charImg(v) {
+    if (!v) return "";
+    if (state.charLook === "classic" || !v.imgStyled) return v.img;
+    return v.imgStyled;
+  }
+
   function renderIntro() {
     const root = $("#intro-root");
     if (!root) return;
@@ -2539,7 +2548,7 @@
       const v = VEGGIES[id];
       return `
         <button type="button" class="intro-card" data-intro-card="${id}" style="--tone:${v.tone};--tone-bg:${v.bg}">
-          <span class="intro-char"><img src="${v.img}" alt="" loading="lazy" /></span>
+          <span class="intro-char"><img src="${charImg(v)}" alt="" loading="lazy" /></span>
           <span class="intro-body">
             <span class="intro-badge">${esc(v.badge)}</span>
             <span class="intro-name">${esc(name)} <small>${esc(v.veg)}</small></span>
@@ -2567,7 +2576,7 @@
   function introProfileHead(id, title, sub) {
     const v = VEGGIES[id];
     return `<div class="profile-head" style="--tone:${v.tone};--tone-bg:${v.bg}">
-        <span class="intro-char profile-char"><img src="${v.img}" alt="" /></span>
+        <span class="intro-char profile-char"><img src="${charImg(v)}" alt="" /></span>
         <div>
           <span class="intro-badge">${esc(v.badge)}</span>
           <h3 class="profile-name">${esc(title)}</h3>
@@ -2727,7 +2736,15 @@
           <label>취미 <input name="hobby" maxlength="60" value="${esc(info.hobby)}" /></label>
         </fieldset>`;
     }).join("");
+    const styledOn = state.charLook !== "classic";
+    const look = `<fieldset class="pet-settings-row">
+          <legend>캐릭터 그림</legend>
+          <label><input type="radio" name="charLook" value="styled" ${styledOn ? "checked" : ""} /> 안경·진한 실버</label>
+          <label><input type="radio" name="charLook" value="classic" ${styledOn ? "" : "checked"} /> 원래 그림</label>
+          <p class="hint">땅콩·고구마 안경과 실버푸들 색입니다. 원래 그림으로 언제든 되돌릴 수 있고, 가족 기기에 같이 적용됩니다.</p>
+        </fieldset>`;
     form.innerHTML =
+      look +
       people +
       PETS.map((p) => {
         const info = state.pets[p.id];
@@ -5774,6 +5791,15 @@
     });
 
     document.body.addEventListener("change", (e) => {
+      if (e.target.name === "charLook" && e.target.closest("#intro-settings-form")) {
+        const next = e.target.value === "classic" ? "classic" : "styled";
+        if (state.charLook !== next) {
+          state.charLook = next;
+          save();
+          toast(next === "classic" ? "원래 캐릭터 그림으로 되돌렸어요." : "안경·실버 그림으로 바꿨어요.");
+        }
+        return;
+      }
       const id = e.target.dataset.member;
       if (id) {
         state.memberFilter[id] = e.target.checked;
