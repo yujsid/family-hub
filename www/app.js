@@ -2151,7 +2151,7 @@
             ${commentHtml || geminiStatusHtml ? "" : `<p class="hint talk-empty-comments">아직 댓글이 없어요.</p>`}
             <form class="comment-form" data-post-id="${esc(post.id)}" action="#" method="post">
               <select name="memberId" aria-label="작성자">${memberSelectOptions(getPreferredMemberId())}</select>
-              <input name="body" required maxlength="500" placeholder="댓글을 입력하세요" />
+              <input name="body" required maxlength="500" placeholder="${post.askGemini ? "이어서 물어보세요" : "댓글을 입력하세요"}" />
               <button class="primary" type="submit">달기</button>
             </form>
           </div>
@@ -2224,10 +2224,12 @@
     save();
     render();
     toast("댓글을 달았습니다.");
+    if (post.askGemini) replyAsGemini(post.id);
   }
 
   let geminiModelPromise = null;
   const geminiBusy = new Set();
+  const geminiFollowUp = new Set();
 
   function weatherBriefForGemini() {
     const region = getWeatherRegion();
@@ -2263,7 +2265,7 @@
         return aiMod.getGenerativeModel(ai, {
           model: "gemini-3.5-flash",
           systemInstruction:
-            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 실버(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
+            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 실버(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 처음 질문과 이어진 댓글을 모두 읽고, 마지막 가족 말에 답해. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
           generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
         });
       })().catch((err) => {
@@ -2292,32 +2294,50 @@
     throw lastErr;
   }
 
+  function geminiThreadPrompt(post) {
+    const author = memberById(post.memberId);
+    const lines = [
+      `오늘 날짜: ${ymd(new Date())}`,
+      weatherBriefForGemini(),
+      "",
+      `처음 질문 (${author?.name || "가족"}, ${author?.role || ""}): ${post.body}`,
+    ];
+    (post.comments || []).forEach((c) => {
+      if (c.memberId === "gemini") lines.push(`Gemini: ${c.body}`);
+      else {
+        const who = memberById(c.memberId);
+        lines.push(`${who?.name || "가족"} (${who?.role || ""}): ${c.body}`);
+      }
+    });
+    lines.push("", "마지막 가족 말에 이어서 댓글로 답해 주세요.");
+    return lines.join("\n");
+  }
+
   async function replyAsGemini(postId) {
-    if (geminiBusy.has(postId)) return;
+    if (geminiBusy.has(postId)) {
+      geminiFollowUp.add(postId);
+      return;
+    }
     const post = state.posts.find((p) => p.id === postId);
-    if (!post || post.geminiStatus === "done") return;
+    if (!post || !post.askGemini) return;
+    const again = geminiFollowUp.has(postId);
+    if (again) geminiFollowUp.delete(postId);
+    const last = (post.comments || [])[post.comments.length - 1];
+    if (!again && last?.memberId === "gemini") return;
     geminiBusy.add(postId);
     post.geminiStatus = "pending";
     post.geminiError = "";
     render();
     try {
       await ensureWeather();
-      const author = memberById(post.memberId);
+      const freshForPrompt = state.posts.find((p) => p.id === postId) || post;
+      const includedComments = (freshForPrompt.comments || []).length;
       const model = await geminiModel();
-      const prompt = [
-        `오늘 날짜: ${ymd(new Date())}`,
-        `작성자: ${author?.name || "가족"} (${author?.role || ""})`,
-        post.title ? `제목: ${post.title}` : "",
-        `질문: ${post.body}`,
-        "",
-        weatherBriefForGemini(),
-      ]
-        .filter(Boolean)
-        .join("\n");
-      const text = await generateGeminiText(model, prompt);
+      const text = await generateGeminiText(model, geminiThreadPrompt(freshForPrompt));
       const fresh = state.posts.find((p) => p.id === postId);
       if (!fresh) return;
       fresh.comments = Array.isArray(fresh.comments) ? fresh.comments : [];
+      if (fresh.comments.length > includedComments) geminiFollowUp.add(postId);
       fresh.comments.push({
         id: uid(),
         memberId: "gemini",
@@ -2339,6 +2359,7 @@
       toast(geminiErrorMessage(err));
     } finally {
       geminiBusy.delete(postId);
+      if (geminiFollowUp.has(postId)) replyAsGemini(postId);
     }
   }
 
