@@ -21,8 +21,8 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=50" />
-  <link rel="stylesheet" href="theme-veggie.css?v=50" />
+  <link rel="stylesheet" href="styles.css?v=52" />
+  <link rel="stylesheet" href="theme-veggie.css?v=52" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -144,9 +144,12 @@
     <section id="view-talk" class="view">
       <div class="toolbar">
         <h2 class="talk-heading">가족 대화</h2>
-        <button id="add-post-btn" class="primary" type="button">글 쓰기</button>
+        <div class="talk-actions">
+          <button id="ask-gemini-btn" class="primary" type="button">제미나이에게 물어보기</button>
+          <button id="add-post-btn" class="primary" type="button">글 쓰기</button>
+        </div>
       </div>
-      <p class="hint">가족에게 소식을 남기고 댓글로 이야기해 보세요.</p>
+      <p class="hint">가족에게 소식을 남기거나, 제미나이에게 물어보면 댓글로 대답해요.</p>
       <div id="talk-feed" class="talk-feed"></div>
     </section>
 
@@ -268,7 +271,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=50"></script>
-  <script src="app.js?v=50"></script>
+  <script src="firebase-config.js?v=52"></script>
+  <script src="app.js?v=52"></script>
 </body>
 </html>

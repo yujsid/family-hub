@@ -912,7 +912,7 @@
     state.applyingRemote = true;
     state.events = Array.isArray(data.events) ? data.events : [];
     state.stamps = Array.isArray(data.stamps) ? data.stamps : [];
-    state.posts = Array.isArray(data.posts) ? data.posts : [];
+    state.posts = mergeTalkPosts(data.posts);
     state.pin = data.pin || "1234";
     state.categories = normalizeCategories(data.categories);
     state.rates = { ...DEFAULT_RATES, ...(data.rates || {}) };
@@ -2065,6 +2065,34 @@
     }).join("");
   }
 
+  const GEMINI_AUTHOR = { name: "Gemini", role: "AI", color: "#4b6cb7" };
+
+  function talkAuthor(memberId) {
+    if (memberId === "gemini") return GEMINI_AUTHOR;
+    return memberById(memberId) || MEMBERS[0];
+  }
+
+  function mergeTalkPosts(remotePosts) {
+    const remote = (Array.isArray(remotePosts) ? remotePosts : []).map((p) => ({
+      ...p,
+      comments: Array.isArray(p.comments) ? p.comments : [],
+    }));
+    state.posts.forEach((local) => {
+      if (!local.askGemini) return;
+      const idx = remote.findIndex((p) => p.id === local.id);
+      if (idx < 0) {
+        if (local.geminiStatus === "pending" || geminiBusy.has(local.id)) remote.push(local);
+        return;
+      }
+      const remoteComments = remote[idx].comments.length;
+      const localComments = Array.isArray(local.comments) ? local.comments.length : 0;
+      if (localComments > remoteComments || (local.geminiStatus === "pending" && remote[idx].geminiStatus !== "done")) {
+        remote[idx] = local;
+      }
+    });
+    return remote;
+  }
+
   function renderTalk() {
     const feed = $("#talk-feed");
     if (!feed) return;
@@ -2075,15 +2103,17 @@
     }
     feed.innerHTML = posts
       .map((post) => {
-        const author = memberById(post.memberId) || MEMBERS[0];
+        const author = talkAuthor(post.memberId);
         const comments = Array.isArray(post.comments) ? post.comments : [];
         const commentHtml = comments
           .map((c) => {
-            const who = memberById(c.memberId) || MEMBERS[0];
-            return `<div class="talk-comment" style="--member:${who.color}">
+            const who = talkAuthor(c.memberId);
+            const geminiClass = c.memberId === "gemini" ? " talk-comment-gemini" : "";
+            return `<div class="talk-comment${geminiClass}" style="--member:${who.color}">
               <div class="talk-meta">
                 <span class="dot" style="background:${who.color}"></span>
                 <strong>${esc(who.name)}</strong>
+                ${who.role ? `<span class="talk-role">${esc(who.role)}</span>` : ""}
                 <span class="talk-time">${esc(formatWhen(c.createdAt))}</span>
                 <button class="ghost tiny" type="button" data-del-comment="${esc(c.id)}" data-post-id="${esc(post.id)}">삭제</button>
               </div>
@@ -2091,6 +2121,18 @@
             </div>`;
           })
           .join("");
+        const geminiStatusHtml =
+          post.askGemini && post.geminiStatus === "pending"
+            ? `<div class="talk-comment talk-comment-gemini" style="--member:${GEMINI_AUTHOR.color}">
+                <div class="talk-meta"><span class="dot" style="background:${GEMINI_AUTHOR.color}"></span><strong>Gemini</strong></div>
+                <p class="hint talk-gemini-pending">대답을 준비하고 있어요.</p>
+              </div>`
+            : post.askGemini && post.geminiStatus === "error"
+              ? `<div class="talk-comment talk-comment-gemini" style="--member:${GEMINI_AUTHOR.color}">
+                  <p class="hint talk-gemini-pending">${esc(post.geminiError || "대답을 받지 못했어요.")}</p>
+                  <button class="primary tiny" type="button" data-gemini-retry="${esc(post.id)}">다시 물어보기</button>
+                </div>`
+              : "";
         const title = post.title ? `<h3 class="talk-title">${esc(post.title)}</h3>` : "";
         return `<article class="talk-post" style="--member:${author.color}">
           <header class="talk-meta">
@@ -2103,8 +2145,10 @@
           ${title}
           <p class="talk-body">${richText(post.body)}</p>
           <div class="talk-comments">
-            <p class="talk-comments-label">댓글 ${comments.length}</p>
-            ${commentHtml || `<p class="hint talk-empty-comments">아직 댓글이 없어요.</p>`}
+            <p class="talk-comments-label">댓글 ${comments.length + (post.askGemini && post.geminiStatus !== "done" ? 1 : 0)}</p>
+            ${commentHtml}
+            ${geminiStatusHtml}
+            ${commentHtml || geminiStatusHtml ? "" : `<p class="hint talk-empty-comments">아직 댓글이 없어요.</p>`}
             <form class="comment-form" data-post-id="${esc(post.id)}" action="#" method="post">
               <select name="memberId" aria-label="작성자">${memberSelectOptions(getPreferredMemberId())}</select>
               <input name="body" required maxlength="500" placeholder="댓글을 입력하세요" />
@@ -2116,22 +2160,23 @@
       .join("");
   }
 
-  function postForm() {
+  function postForm(askGemini) {
     openModal(`
-      <h3>글 쓰기</h3>
-      <form id="post-form" class="stack" action="#" method="post">
+      <h3>${askGemini ? "제미나이에게 물어보기" : "글 쓰기"}</h3>
+      <form id="post-form" class="stack" action="#" method="post" data-ask-gemini="${askGemini ? "1" : ""}">
         <label>작성자
           <select name="memberId">${memberSelectOptions(getPreferredMemberId())}</select>
         </label>
         <label>제목 (선택)
-          <input name="title" maxlength="80" placeholder="예: 이번 주말 계획" />
+          <input name="title" maxlength="80" placeholder="${askGemini ? "예: 오늘 날씨" : "예: 이번 주말 계획"}" />
         </label>
-        <label>내용
-          <textarea name="body" rows="5" required maxlength="2000" placeholder="가족에게 전할 말을 적어 주세요."></textarea>
+        <label>${askGemini ? "질문" : "내용"}
+          <textarea name="body" rows="5" required maxlength="2000" placeholder="${askGemini ? "예: 오늘 날씨 어때?" : "가족에게 전할 말을 적어 주세요."}"></textarea>
         </label>
+        ${askGemini ? `<p class="hint">올리면 Gemini가 이 글의 댓글로 답해요. 날씨를 물으면 일정에 있는 가족 지역 예보를 참고해요.</p>` : ""}
         <div class="modal-actions">
           <button type="button" id="cancel-modal">취소</button>
-          <button class="primary" type="button" id="save-post">올리기</button>
+          <button class="primary" type="button" id="save-post">${askGemini ? "물어보기" : "올리기"}</button>
         </div>
       </form>
     `);
@@ -2143,20 +2188,25 @@
     if (!body) return toast("내용을 입력해 주세요.");
     const title = String(fd.get("title") || "").trim();
     const memberId = fd.get("memberId") || getPreferredMemberId();
+    const askGemini = form.dataset.askGemini === "1";
     setPreferredMemberId(memberId);
-    state.posts.push({
+    const post = {
       id: uid(),
       memberId,
       title,
       body,
       createdAt: new Date().toISOString(),
       comments: [],
-    });
+      askGemini,
+      geminiStatus: askGemini ? "pending" : "",
+    };
+    state.posts.push(post);
     save();
     closeModal();
     state.tab = "talk";
     render();
-    toast("글을 올렸습니다.");
+    toast(askGemini ? "질문을 올렸습니다." : "글을 올렸습니다.");
+    if (askGemini) replyAsGemini(post.id);
   }
 
   function saveCommentFromForm(form) {
@@ -2178,6 +2228,122 @@
     save();
     render();
     toast("댓글을 달았습니다.");
+  }
+
+  let geminiModelPromise = null;
+  const geminiBusy = new Set();
+
+  function weatherBriefForGemini() {
+    const region = getWeatherRegion();
+    const keys = Object.keys(state.weatherByDate || {}).sort();
+    if (!keys.length) {
+      return `가족 지역: ${region.label}\n저장된 예보가 없습니다. 날씨 수치를 지어내지 마세요.`;
+    }
+    const lines = keys.slice(0, 7).map((key) => {
+      const text = String(state.weatherByDate[key]?.text || "").replace(/\s+/g, " ").trim();
+      return `${key}: ${text}`;
+    });
+    return `가족 지역: ${region.label}\n예보 출처: ${state.weatherMeta.source || "알 수 없음"}\n${lines.join("\n")}`;
+  }
+
+  function geminiErrorMessage(err) {
+    const raw = String(err?.message || err || "");
+    if (/permission|PERMISSION_DENIED|API has not been used|blocked|unregistered/i.test(raw)) {
+      return "Firebase에서 Gemini 사용 설정이 아직 끝나지 않았어요.";
+    }
+    if (/not found|404/i.test(raw) && /model/i.test(raw)) {
+      return "Gemini 모델을 찾지 못했어요.";
+    }
+    return "Gemini 대답을 받지 못했어요. 잠시 후 다시 물어봐 주세요.";
+  }
+
+  function geminiModel() {
+    if (!geminiModelPromise) {
+      geminiModelPromise = (async () => {
+        const appMod = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js");
+        const aiMod = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-ai.js");
+        const firebaseApp = appMod.initializeApp(window.FAMILY_HUB_FIREBASE, "family-hub-ai");
+        const ai = aiMod.getAI(firebaseApp, { backend: new aiMod.GoogleAIBackend() });
+        return aiMod.getGenerativeModel(ai, {
+          model: "gemini-3.5-flash",
+          systemInstruction:
+            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 칠복이(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
+          generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
+        });
+      })().catch((err) => {
+        geminiModelPromise = null;
+        throw err;
+      });
+    }
+    return geminiModelPromise;
+  }
+
+  async function generateGeminiText(model, prompt) {
+    let lastErr = new Error("empty");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await model.generateContent(prompt);
+        const text = String(result?.response?.text?.() || "").trim();
+        if (text) return text;
+        lastErr = new Error("empty");
+      } catch (err) {
+        lastErr = err;
+        const raw = String(err?.message || err);
+        if (attempt === 1 || !/503|500|Deadline|high demand/i.test(raw)) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+    }
+    throw lastErr;
+  }
+
+  async function replyAsGemini(postId) {
+    if (geminiBusy.has(postId)) return;
+    const post = state.posts.find((p) => p.id === postId);
+    if (!post || post.geminiStatus === "done") return;
+    geminiBusy.add(postId);
+    post.geminiStatus = "pending";
+    post.geminiError = "";
+    render();
+    try {
+      await ensureWeather();
+      const author = memberById(post.memberId);
+      const model = await geminiModel();
+      const prompt = [
+        `오늘 날짜: ${ymd(new Date())}`,
+        `작성자: ${author?.name || "가족"} (${author?.role || ""})`,
+        post.title ? `제목: ${post.title}` : "",
+        `질문: ${post.body}`,
+        "",
+        weatherBriefForGemini(),
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const text = await generateGeminiText(model, prompt);
+      const fresh = state.posts.find((p) => p.id === postId);
+      if (!fresh) return;
+      fresh.comments = Array.isArray(fresh.comments) ? fresh.comments : [];
+      fresh.comments.push({
+        id: uid(),
+        memberId: "gemini",
+        body: text,
+        createdAt: new Date().toISOString(),
+      });
+      fresh.geminiStatus = "done";
+      fresh.geminiError = "";
+      save();
+      render();
+    } catch (err) {
+      const fresh = state.posts.find((p) => p.id === postId);
+      if (fresh && fresh.geminiStatus !== "done") {
+        fresh.geminiStatus = "error";
+        fresh.geminiError = geminiErrorMessage(err);
+        save();
+        render();
+      }
+      toast(geminiErrorMessage(err));
+    } finally {
+      geminiBusy.delete(postId);
+    }
   }
 
   function petById(id) {
@@ -5437,7 +5603,8 @@
     });
     on("#add-todo-list-btn", "click", () => eventForm(null, "todo"));
     on("#add-stamp-btn", "click", () => stampForm());
-    on("#add-post-btn", "click", () => postForm());
+    on("#add-post-btn", "click", () => postForm(false));
+    on("#ask-gemini-btn", "click", () => postForm(true));
     on("#stamp-prev", "click", () => {
       state.cursor.setMonth(state.cursor.getMonth() - 1);
       render();
@@ -5527,6 +5694,8 @@
         const form = document.getElementById("post-form");
         if (form) savePostFromForm(form);
       }
+      const geminiRetry = e.target.closest("[data-gemini-retry]");
+      if (geminiRetry) replyAsGemini(geminiRetry.dataset.geminiRetry);
       if (e.target.id === "save-pin") {
         const form = document.getElementById("pin-form");
         const fd = new FormData(form);

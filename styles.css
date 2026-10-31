@@ -910,6 +910,11 @@ button.primary {
 }
 .todo-rate-box .hint { margin: 8px 0 0; }
 
+.talk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .talk-heading {
   margin: 0;
   font-family: "Jua", sans-serif;
@@ -981,6 +986,10 @@ button.primary {
   border: 1px solid color-mix(in srgb, var(--member, var(--line)) 25%, var(--line));
 }
 .talk-comment .talk-meta { margin-bottom: 4px; }
+.talk-comment-gemini {
+  background: color-mix(in srgb, #4b6cb7 12%, #fff);
+}
+.talk-gemini-pending { margin: 0; }
 .comment-form {
   display: grid;
   grid-template-columns: minmax(110px, 140px) 1fr auto;
