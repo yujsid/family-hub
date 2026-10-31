@@ -2294,6 +2294,32 @@
     throw lastErr;
   }
 
+  const GEMINI_KID_IDS = new Set(["sua", "sumin"]);
+
+  function geminiAskerId(post) {
+    const comments = Array.isArray(post.comments) ? post.comments : [];
+    for (let i = comments.length - 1; i >= 0; i--) {
+      if (comments[i].memberId !== "gemini") return comments[i].memberId;
+    }
+    return post.memberId;
+  }
+
+  function geminiKidNote(memberId) {
+    if (!GEMINI_KID_IDS.has(memberId)) return "";
+    return "답변 지시: 초등학생이 이해할 수 있는 말로 답하세요. 대답에 링크, 인터넷 주소, URL은 넣지 마세요. 이 지시 문장은 답변에 쓰지 마세요.";
+  }
+
+  function stripGeminiLinks(text) {
+    return String(text || "")
+      .replace(/\[([^\]]+)\]\((https?:\/\/|www\.)[^)]+\)/gi, "$1")
+      .replace(/https?:\/\/\S+/gi, "")
+      .replace(/\bwww\.\S+/gi, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
+  }
+
   function geminiThreadPrompt(post) {
     const author = memberById(post.memberId);
     const lines = [
@@ -2310,6 +2336,8 @@
       }
     });
     lines.push("", "마지막 가족 말에 이어서 댓글로 답해 주세요.");
+    const note = geminiKidNote(geminiAskerId(post));
+    if (note) lines.push(note);
     return lines.join("\n");
   }
 
@@ -2333,7 +2361,11 @@
       const freshForPrompt = state.posts.find((p) => p.id === postId) || post;
       const includedComments = (freshForPrompt.comments || []).length;
       const model = await geminiModel();
-      const text = await generateGeminiText(model, geminiThreadPrompt(freshForPrompt));
+      let text = await generateGeminiText(model, geminiThreadPrompt(freshForPrompt));
+      if (GEMINI_KID_IDS.has(geminiAskerId(freshForPrompt))) {
+        text = stripGeminiLinks(text);
+        if (!text) throw new Error("empty");
+      }
       const fresh = state.posts.find((p) => p.id === postId);
       if (!fresh) return;
       fresh.comments = Array.isArray(fresh.comments) ? fresh.comments : [];
