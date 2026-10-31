@@ -2741,7 +2741,7 @@
           <legend>캐릭터 그림</legend>
           <label><input type="radio" name="charLook" value="styled" ${styledOn ? "checked" : ""} /> 안경·진한 실버</label>
           <label><input type="radio" name="charLook" value="classic" ${styledOn ? "" : "checked"} /> 원래 그림</label>
-          <p class="hint">땅콩·고구마 안경과 실버푸들 색입니다. 원래 그림으로 언제든 되돌릴 수 있고, 가족 기기에 같이 적용됩니다.</p>
+          <p class="hint">땅콩·고구마 안경과 실버푸들 색입니다. 가족소개와 홈 화면에 같이 적용되고, 원래 그림으로 언제든 되돌릴 수 있어요.</p>
         </fieldset>`;
     form.innerHTML =
       look +
@@ -5237,7 +5237,17 @@
     }
   }
 
+  function applyHomeArt() {
+    const styled = state.charLook !== "classic";
+    document.body.classList.toggle("char-styled", styled);
+    const img = document.querySelector(".home-hero-img");
+    const source = document.querySelector(".home-hero picture source");
+    if (img) img.src = styled ? "img/home-portrait-styled.jpg" : "img/home-portrait.jpg";
+    if (source) source.srcset = styled ? "img/home-wide-styled.jpg" : "img/home-wide.jpg";
+  }
+
   function render() {
+    applyHomeArt();
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === state.tab));
     document.querySelectorAll(".drawer-item").forEach((t) => t.classList.toggle("is-active", t.dataset.goTab === state.tab));
     document.body.dataset.tab = state.tab;
@@ -5796,7 +5806,9 @@
         if (state.charLook !== next) {
           state.charLook = next;
           save();
-          toast(next === "classic" ? "원래 캐릭터 그림으로 되돌렸어요." : "안경·실버 그림으로 바꿨어요.");
+          applyHomeArt();
+          if (state.tab === "intro") renderIntro();
+          toast(next === "classic" ? "원래 그림으로 되돌렸어요." : "안경·실버 그림으로 바꿨어요.");
         }
         return;
       }

@@ -272,6 +272,9 @@ body::before {
   background: url("img/home-wide.jpg") center / cover no-repeat;
   opacity: 0.22;
 }
+body.char-styled::before {
+  background-image: url("img/home-wide-styled.jpg");
+}
 body[data-tab="home"]::before { display: none; }
 .topbar {
   position: relative;
@@ -529,6 +532,7 @@ body[data-tab="home"]::before { display: none; }
   }
   .tab.is-active .nav-icon { stroke-width: 2.3; }
   body::before { background-image: url("img/home-portrait.jpg"); }
+  body.char-styled::before { background-image: url("img/home-portrait-styled.jpg"); }
   .home-hero {
     position: fixed;
     inset: 0;
