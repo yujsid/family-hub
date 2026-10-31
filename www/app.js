@@ -4,14 +4,14 @@
     { id: "sinjeong", name: "윤신정", shortName: "신정", role: "엄마", color: "#d76a4f" },
     { id: "sua", name: "유수아", shortName: "수아", role: "딸", color: "#5e8f74" },
     { id: "sumin", name: "유수민", shortName: "수민", role: "아들", color: "#d4a017" },
-    { id: "chilbok", name: "칠복이", shortName: "칠복", role: "강아지", color: "#8f86b8", pet: true },
+    { id: "chilbok", name: "실버", shortName: "실버", role: "강아지", color: "#8f86b8", pet: true },
     { id: "family", name: "공통", shortName: "공통", role: "전체", color: "#8a6a4a", shared: true },
   ];
   const PEOPLE_MEMBERS = MEMBERS.filter((m) => !m.shared && !m.pet);
   const CALENDAR_MEMBERS = MEMBERS.filter((m) => !m.shared);
   const PETS = [
     { id: "peanut", name: "피넛", emoji: "🦎", defaultBreed: "크레스티드 게코", unit: "g", step: "0.1", color: "#7a9a3a" },
-    { id: "chilbok", name: "칠복이", emoji: "🐩", defaultBreed: "실버 토이푸들", unit: "kg", step: "0.01", color: "#8f86b8" },
+    { id: "chilbok", name: "실버", emoji: "🐩", defaultBreed: "실버 토이푸들", unit: "kg", step: "0.01", color: "#8f86b8" },
   ];
   const PERSON_EMOJI = { 아빠: "👨", 엄마: "👩", 딸: "👧", 아들: "👦" };
   const VEGGIES = {
@@ -2162,13 +2162,10 @@
 
   function postForm(askGemini) {
     openModal(`
-      <h3>${askGemini ? "제미나이에게 물어보기" : "글 쓰기"}</h3>
+      <h3>${askGemini ? "AI에게 물어보기" : "글 쓰기"}</h3>
       <form id="post-form" class="stack" action="#" method="post" data-ask-gemini="${askGemini ? "1" : ""}">
         <label>작성자
           <select name="memberId">${memberSelectOptions(getPreferredMemberId())}</select>
-        </label>
-        <label>제목 (선택)
-          <input name="title" maxlength="80" placeholder="${askGemini ? "예: 오늘 날씨" : "예: 이번 주말 계획"}" />
         </label>
         <label>${askGemini ? "질문" : "내용"}
           <textarea name="body" rows="5" required maxlength="2000" placeholder="${askGemini ? "예: 오늘 날씨 어때?" : "가족에게 전할 말을 적어 주세요."}"></textarea>
@@ -2186,14 +2183,13 @@
     const fd = new FormData(form);
     const body = String(fd.get("body") || "").trim();
     if (!body) return toast("내용을 입력해 주세요.");
-    const title = String(fd.get("title") || "").trim();
     const memberId = fd.get("memberId") || getPreferredMemberId();
     const askGemini = form.dataset.askGemini === "1";
     setPreferredMemberId(memberId);
     const post = {
       id: uid(),
       memberId,
-      title,
+      title: "",
       body,
       createdAt: new Date().toISOString(),
       comments: [],
@@ -2267,7 +2263,7 @@
         return aiMod.getGenerativeModel(ai, {
           model: "gemini-3.5-flash",
           systemInstruction:
-            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 칠복이(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
+            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 실버(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
           generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
         });
       })().catch((err) => {

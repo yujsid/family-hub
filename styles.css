@@ -911,9 +911,12 @@ button.primary {
 .todo-rate-box .hint { margin: 8px 0 0; }
 
 .talk-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+.talk-actions .primary {
+  width: 100%;
 }
 .talk-heading {
   margin: 0;
