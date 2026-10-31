@@ -930,6 +930,7 @@
     render();
     state.applyingRemote = false;
     if (uploadRanks) save();
+    scheduleGeminiFollowUps();
   }
 
   function esc(s) {
@@ -973,25 +974,42 @@
     el.textContent = "Firebase에 연결하는 중…";
   }
 
+  let saveQueued = false;
+
   function save() {
     if (!familyRef || state.applyingRemote) return;
+    if (state.saving) {
+      saveQueued = true;
+      return;
+    }
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      try {
-        state.saving = true;
+    saveTimer = setTimeout(flushSave, 250);
+  }
+
+  async function flushSave() {
+    if (!familyRef) return;
+    if (state.saving) {
+      saveQueued = true;
+      return;
+    }
+    state.saving = true;
+    try {
+      do {
+        saveQueued = false;
         const payload = payloadFromState();
         await familyRef.set(payload, { merge: true });
         // merge:true deep-merges maps, so deleted meal keys would linger unless replaced.
         await familyRef.update({ meals: state.meals || {} });
         state.cloudError = "";
-      } catch (err) {
-        state.cloudError = err.message || String(err);
-        toast("클라우드 저장에 실패했습니다.");
-        updateCloudStatus();
-      } finally {
-        state.saving = false;
-      }
-    }, 250);
+      } while (saveQueued);
+    } catch (err) {
+      state.cloudError = err.message || String(err);
+      toast("클라우드 저장에 실패했습니다.");
+      updateCloudStatus();
+    } finally {
+      state.saving = false;
+      if (saveQueued) flushSave();
+    }
   }
 
   async function initCloud() {
@@ -2224,7 +2242,7 @@
     save();
     render();
     toast("댓글을 달았습니다.");
-    if (post.askGemini) replyAsGemini(post.id);
+    if (post.askGemini) replyAsGemini(post.id, "comment");
   }
 
   let geminiModelPromise = null;
@@ -2341,22 +2359,88 @@
     return lines.join("\n");
   }
 
-  async function replyAsGemini(postId) {
+  function scheduleGeminiFollowUps() {
+    state.posts.forEach((post) => {
+      const comments = Array.isArray(post.comments) ? post.comments : [];
+      const last = comments[comments.length - 1];
+      if (!post.askGemini || !last || last.memberId === "gemini") return;
+      if (geminiBusy.has(post.id)) return;
+      replyAsGemini(post.id);
+    });
+  }
+
+  async function claimGeminiTurn(postId) {
+    const local = state.posts.find((p) => p.id === postId);
+    if (!local || !local.askGemini) return false;
+    const localComments = Array.isArray(local.comments) ? local.comments : [];
+    const lastLocal = localComments[localComments.length - 1];
+    if (lastLocal && lastLocal.memberId === "gemini") return false;
+    if (!familyRef || !db) return true;
+    const claim = uid();
+    const now = Date.now();
+    try {
+      const won = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(familyRef);
+        if (!snap.exists) return true;
+        const posts = Array.isArray(snap.data().posts) ? snap.data().posts : [];
+        const idx = posts.findIndex((p) => p.id === postId);
+        if (idx < 0) return true;
+        const remote = posts[idx];
+        const remoteComments = Array.isArray(remote.comments) ? remote.comments : [];
+        const useLocal = localComments.length >= remoteComments.length;
+        const merged = useLocal ? localComments : remoteComments;
+        const mergedLast = merged[merged.length - 1];
+        if (mergedLast && mergedLast.memberId === "gemini") return false;
+        const claimAt = Number(remote.geminiClaimAt || 0);
+        const pendingFresh = remote.geminiStatus === "pending" && remote.geminiClaim && now - claimAt < 60000;
+        if (pendingFresh && remote.geminiClaim !== local.geminiClaim) return false;
+        posts[idx] = {
+          ...remote,
+          comments: merged,
+          askGemini: true,
+          geminiStatus: "pending",
+          geminiError: "",
+          geminiClaim: claim,
+          geminiClaimAt: now,
+        };
+        tx.update(familyRef, { posts });
+        return { claim, comments: merged };
+      });
+      if (!won || won === true) {
+        if (!won) return false;
+        local.geminiClaim = claim;
+        local.geminiClaimAt = now;
+        return true;
+      }
+      if (Array.isArray(won.comments) && won.comments.length > localComments.length) {
+        local.comments = won.comments;
+      }
+      local.geminiClaim = won.claim;
+      local.geminiClaimAt = now;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function replyAsGemini(postId, reason) {
     if (geminiBusy.has(postId)) {
-      geminiFollowUp.add(postId);
+      if (reason === "comment") geminiFollowUp.add(postId);
       return;
     }
     const post = state.posts.find((p) => p.id === postId);
     if (!post || !post.askGemini) return;
-    const again = geminiFollowUp.has(postId);
-    if (again) geminiFollowUp.delete(postId);
     const last = (post.comments || [])[post.comments.length - 1];
-    if (!again && last?.memberId === "gemini") return;
+    if (last?.memberId === "gemini") return;
     geminiBusy.add(postId);
-    post.geminiStatus = "pending";
-    post.geminiError = "";
-    render();
+    let claimed = false;
     try {
+      claimed = await claimGeminiTurn(postId);
+      if (!claimed) return;
+      const current = state.posts.find((p) => p.id === postId) || post;
+      current.geminiStatus = "pending";
+      current.geminiError = "";
+      render();
       await ensureWeather();
       const freshForPrompt = state.posts.find((p) => p.id === postId) || post;
       const includedComments = (freshForPrompt.comments || []).length;
@@ -2378,6 +2462,8 @@
       });
       fresh.geminiStatus = "done";
       fresh.geminiError = "";
+      fresh.geminiClaim = "";
+      fresh.geminiClaimAt = 0;
       save();
       render();
     } catch (err) {
@@ -2385,13 +2471,18 @@
       if (fresh && fresh.geminiStatus !== "done") {
         fresh.geminiStatus = "error";
         fresh.geminiError = geminiErrorMessage(err);
+        fresh.geminiClaim = "";
+        fresh.geminiClaimAt = 0;
         save();
         render();
       }
-      toast(geminiErrorMessage(err));
+      if (claimed) toast(geminiErrorMessage(err));
     } finally {
       geminiBusy.delete(postId);
-      if (geminiFollowUp.has(postId)) replyAsGemini(postId);
+      if (geminiFollowUp.has(postId)) {
+        geminiFollowUp.delete(postId);
+        replyAsGemini(postId, "comment");
+      }
     }
   }
 
