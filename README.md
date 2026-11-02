@@ -52,6 +52,18 @@ npm install
 npm run build:apk
 ```
 
+## 5) 구글 캘린더 「가족」과 동기화
+
+설정 → 구글 캘린더에서 일정과 할 일을 구글 캘린더의 「가족」 캘린더와 맞출 수 있습니다. 용돈 도장은 올리지 않습니다.
+
+1. [Google Cloud 사용자 인증 정보](https://console.cloud.google.com/apis/credentials)에서 OAuth 클라이언트 ID(웹 애플리케이션)를 만듭니다.
+2. 승인된 자바스크립트 원본에 `https://yujsid.github.io` 를 넣습니다.
+3. [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)를 사용 설정합니다.
+4. 동의 화면이 테스트 중이면 본인 구글 계정을 테스트 사용자로 추가합니다.
+5. 발급된 클라이언트 ID를 가족 허브 설정의 「구글 연결 설정」에 저장하고 **가족 캘린더 연결**을 누릅니다.
+
+이름이 「가족」인, 수정 권한이 있는 캘린더를 찾아 일정·할 일을 올리고, 그 캘린더에만 있는 일정은 허브로 가져옵니다. 로그인은 약 1시간 유지되며, 만료되면 「다시 연결하고 동기화」를 누르면 됩니다.
+
 ## 로컬에서 열기
 `index.html`을 더블클릭하거나 로컬 서버로 열면 됩니다. Firebase 설정이 있어야 데이터가 클라우드에 저장됩니다.
 PWA 설치는 HTTPS 주소(GitHub Pages)에서만 가능합니다.

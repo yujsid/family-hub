@@ -21,8 +21,8 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=58" />
-  <link rel="stylesheet" href="theme-veggie.css?v=58" />
+  <link rel="stylesheet" href="styles.css?v=59" />
+  <link rel="stylesheet" href="theme-veggie.css?v=59" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -256,6 +256,11 @@
           <p class="hint">도장 항목과 할 일 완료 금액을 설정하세요. 유수아·유수민 할 일 완료 개수가 용돈에 합산됩니다.</p>
           <form id="rates-form" class="stack cat-edit-form" action="#" method="post"></form>
         </article>
+        <article class="card" id="gcal-card">
+          <h3>구글 캘린더</h3>
+          <p class="hint">허브에 등록된 일정과 할 일을 구글 캘린더의 「가족」 캘린더와 맞춥니다. 허브에서 저장·수정·삭제하면 가족 캘린더에도 반영되고, 가족 캘린더에만 있는 일정은 허브로 가져옵니다. 용돈 도장은 올리지 않습니다.</p>
+          <div id="gcal-settings-root"></div>
+        </article>
         <article class="card" id="firebase-status-card">
           <h3>클라우드 연결 (Firebase)</h3>
           <p class="hint" id="firebase-status-text">연결 상태를 확인하는 중…</p>
@@ -271,7 +276,8 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=58"></script>
-  <script src="app.js?v=58"></script>
+  <script src="firebase-config.js?v=59"></script>
+  <script src="gcal.js?v=59"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>

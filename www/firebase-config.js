@@ -28,3 +28,10 @@ window.FAMILY_HUB_SCHOOL_MEAL = {
 
 // 가족 데이터 문서 경로 (같은 값을 쓰는 기기끼리 데이터를 공유합니다)
 window.FAMILY_HUB_DOC = "families/yu-family";
+
+// 구글 캘린더 동기화. clientId는 설정 화면에서도 저장할 수 있습니다.
+// 승인된 자바스크립트 원본: https://yujsid.github.io
+window.FAMILY_HUB_GCAL = {
+  clientId: "",
+  calendarName: "가족",
+};

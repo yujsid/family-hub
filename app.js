@@ -317,6 +317,7 @@
     cloudError: "",
     saving: false,
     applyingRemote: false,
+    gcalSyncing: false,
     settingsUnlocked: readSettingsUnlocked(),
   };
 
@@ -934,6 +935,7 @@
     state.applyingRemote = false;
     if (uploadRanks) save();
     scheduleGeminiFollowUps();
+    if (window.FamilyHubGcal) window.FamilyHubGcal.onLocalChange();
   }
 
   function esc(s) {
@@ -978,8 +980,12 @@
   }
 
   let saveQueued = false;
+  let gcalSaveGen = 0;
+  let gcalQuietGen = -1;
+  let gcalHoldSyncing = false;
 
   function save() {
+    gcalSaveGen += 1;
     if (!familyRef || state.applyingRemote) return;
     if (state.saving) {
       saveQueued = true;
@@ -1009,9 +1015,32 @@
       state.cloudError = err.message || String(err);
       toast("클라우드 저장에 실패했습니다.");
       updateCloudStatus();
+      gcalHoldSyncing = false;
+      state.gcalSyncing = false;
     } finally {
       state.saving = false;
+      const quiet = gcalSaveGen === gcalQuietGen;
+      if (quiet) {
+        setTimeout(() => {
+          if (gcalSaveGen === gcalQuietGen) {
+            gcalHoldSyncing = false;
+            state.gcalSyncing = false;
+          }
+        }, 800);
+      }
       if (saveQueued) flushSave();
+      else if (!quiet && window.FamilyHubGcal) window.FamilyHubGcal.onLocalChange();
+    }
+  }
+
+  function saveQuietFromGcal() {
+    gcalQuietGen = gcalSaveGen + 1;
+    gcalHoldSyncing = true;
+    state.gcalSyncing = true;
+    save();
+    if (!familyRef || state.applyingRemote) {
+      gcalHoldSyncing = false;
+      state.gcalSyncing = false;
     }
   }
 
@@ -1041,8 +1070,8 @@
       familyRef.onSnapshot(
         (doc) => {
           if (!doc.exists) return;
-          if (state.saving) {
-            mergeRemoteRanks(doc.data() || {});
+          if (state.saving || state.gcalSyncing) {
+            if (state.saving) mergeRemoteRanks(doc.data() || {});
             return;
           }
           applyRemoteData(doc.data() || {});
@@ -2856,6 +2885,7 @@
       fillMealForm(state.selected);
     }
     updateCloudStatus();
+    if (window.FamilyHubGcal) window.FamilyHubGcal.mount(document.getElementById("gcal-settings-root"));
   }
 
   function readTodoRateFromForm(form) {
@@ -5430,6 +5460,7 @@
         endTime: fields.endTime,
         note: fields.note,
       };
+      existing.updatedAt = new Date().toISOString();
       // When date unchanged, keep occurrence in series with override only (don't exclude).
       // When date changed, old date excluded above; new date may also match series — override covers it.
       state.selected = parseYmd(targetDate);
@@ -5447,7 +5478,11 @@
       doneDates: (existing && existing.doneDates) || {},
       excludeDates: scope === "all" && fields.repeat === "none" ? [] : (existing && existing.excludeDates) || [],
       overrides: scope === "all" && fields.repeat === "none" ? {} : (existing && existing.overrides) || {},
+      updatedAt: new Date().toISOString(),
     };
+    if (existing && existing.gcalId) payload.gcalId = existing.gcalId;
+    if (existing && existing.gcalImported) payload.gcalImported = true;
+    if (existing && existing.gcalSyncedAt) payload.gcalSyncedAt = existing.gcalSyncedAt;
     if (existing && scope === "all" && fields.repeat !== "none") {
       // Keep exceptions when editing the whole series template.
       payload.excludeDates = existing.excludeDates || [];
@@ -6161,6 +6196,7 @@
       ev.doneDates = ev.doneDates || {};
       if (box.checked) ev.doneDates[box.dataset.date] = true;
       else delete ev.doneDates[box.dataset.date];
+      ev.updatedAt = new Date().toISOString();
       save();
       render();
       if (document.querySelector(".day-modal")) openDayDetailModal(state.selected);
@@ -6288,6 +6324,28 @@
       }
     }, true);
   }
+
+  window.FamilyHubGcalHost = {
+    ready() {
+      return !isFirebaseConfigured() || state.cloudHydrated;
+    },
+    events() {
+      return state.events;
+    },
+    memberName(id) {
+      return memberById(id)?.name || "";
+    },
+    saveQuiet: saveQuietFromGcal,
+    setSyncing(on) {
+      if (on) state.gcalSyncing = true;
+      else if (!gcalHoldSyncing) state.gcalSyncing = false;
+    },
+    toast,
+    refresh() {
+      render();
+    },
+    newId: uid,
+  };
 
   hydrateLocalRanks();
   initCloud().then(() => {

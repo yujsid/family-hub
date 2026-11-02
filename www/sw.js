@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v58";
+const CACHE = "family-hub-v59";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,6 +10,7 @@ const ASSETS = [
   "./img/home-portrait-styled.jpg",
   "./img/home-wide-styled.jpg",
   "./app.js",
+  "./gcal.js",
   "./firebase-config.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
@@ -34,6 +35,7 @@ self.addEventListener("fetch", (event) => {
   if (
     url.hostname.includes("googleapis.com") ||
     url.hostname.includes("gstatic.com") ||
+    url.hostname.includes("accounts.google.com") ||
     url.hostname.includes("firebaseio.com") ||
     url.hostname.includes("firestore.googleapis.com") ||
     url.hostname.includes("apis.data.go.kr") ||
@@ -53,6 +55,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/styles.css") ||
     url.pathname.endsWith("/theme-veggie.css") ||
     url.pathname.endsWith("/firebase-config.js") ||
+    url.pathname.endsWith("/gcal.js") ||
     url.pathname.endsWith("/sw.js");
 
   if (isAppShell) {
