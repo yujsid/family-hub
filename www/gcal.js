@@ -160,13 +160,23 @@
     return Boolean(ev.doneDates && ev.doneDates[date]);
   }
 
+  const MEMBER_TAG_RE = /^\((?:재상|신정|수아|수민|실버|공통)\)\s*/;
+
+  function scheduleSummary(title, ctx, imported) {
+    const tag = ctx && ctx.memberTag ? String(ctx.memberTag).trim() : "";
+    if (!tag || imported) return title;
+    if (title.startsWith(`(${tag})`)) return title;
+    return `(${tag}) ${title}`;
+  }
+
   function buildGoogleEvent(ev, ctx) {
     const member = (ctx && ctx.memberName) || "";
     const kindLabel = ev.kind === "todo" ? "할일" : "일정";
     const single = !ev.repeat || ev.repeat === "none";
     const done = ev.kind === "todo" && single && doneOn(ev, ev.date);
     const title = ev.title || "(제목 없음)";
-    const summary = ev.kind === "todo" ? `${done ? "✓ " : ""}할일 · ${title}` : title;
+    const summary =
+      ev.kind === "todo" ? `${done ? "✓ " : ""}할일 · ${title}` : scheduleSummary(title, ctx, ev.gcalImported);
     const lines = [`가족허브 ${kindLabel}`];
     if (member) lines.push(`담당: ${member}`);
     if (ev.note) lines.push("", ev.note);
@@ -344,6 +354,7 @@
       kind = "todo";
       title = title.replace(/^할일\s*·\s*/, "");
     }
+    if (priv.familyHub) title = title.replace(MEMBER_TAG_RE, "");
     if (!title) title = "(제목 없음)";
     let note = String(g.description || "");
     const doneDatesList = parseDoneLine(note);
@@ -435,12 +446,15 @@
     );
   }
 
-  function buildDesired(events, memberName) {
+  function buildDesired(events, memberName, memberTag) {
     const desired = [];
     (events || []).forEach((ev) => {
       if (!ev || ev.kind !== "schedule") return;
       if (!ev.date || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) return;
-      const ctx = { memberName: memberName(ev.memberId) };
+      const ctx = {
+        memberName: memberName(ev.memberId),
+        memberTag: typeof memberTag === "function" ? memberTag(ev.memberId) : "",
+      };
       desired.push({
         localId: ev.id,
         familyHubId: ev.id,
@@ -892,6 +906,7 @@
     if (!ev.gcalSyncedAt) return true;
     if (ev.updatedAt && ev.updatedAt > ev.gcalSyncedAt) return true;
     if (remote && remote.updated && remote.updated > ev.gcalSyncedAt) return true;
+    if (remote && item.body && remote.summary !== item.body.summary) return true;
     if (!item.imported && !remote) return true;
     return false;
   }
@@ -977,7 +992,11 @@
         });
       }
 
-      const desired = buildDesired(events, (id) => h.memberName(id));
+      const desired = buildDesired(
+        events,
+        (id) => h.memberName(id),
+        (id) => (h.memberTag ? h.memberTag(id) : "")
+      );
       const wanted = new Set(desired.map((item) => item.familyHubId));
       const toDelete = [];
       byHub.forEach((g, hid) => {
@@ -1132,7 +1151,7 @@
           <button type="button" id="gcal-save-client">클라이언트 ID 저장</button>
         </div>
       </details>
-      <p class="hint">일정만 가족 캘린더와 맞춥니다. 할 일과 용돈 도장은 올리지 않습니다. 가족 캘린더에 직접 넣은 일정은 허브 일정으로 들어오고, 반복 일정은 반복 규칙으로 맞춥니다.</p>
+      <p class="hint">일정만 가족 캘린더와 맞춥니다. 구글 제목 앞에는 (수아), (수민)처럼 누구 일정인지 붙고, 허브 화면의 제목은 그대로입니다. 할 일과 용돈 도장은 올리지 않습니다. 가족 캘린더에 직접 넣은 일정은 허브 일정으로 들어오고, 반복 일정은 반복 규칙으로 맞춥니다.</p>
     </div>`;
   }
 
@@ -1198,6 +1217,7 @@
     hubWins,
     syncSignature,
     buildDesired,
+    needsPush,
     seoulParts,
     wallTime,
   };

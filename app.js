@@ -6353,6 +6353,9 @@
     memberName(id) {
       return memberById(id)?.name || "";
     },
+    memberTag(id) {
+      return memberById(id)?.shortName || "";
+    },
     saveQuiet: saveQuietFromGcal,
     setSyncing(on) {
       if (on) state.gcalSyncing = true;

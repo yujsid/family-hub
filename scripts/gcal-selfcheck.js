@@ -65,9 +65,11 @@ assert(body.extendedProperties.private.familyHubKind === "todo", "kind prop");
 assert(body.colorId === "10", "member color");
 const desired = dbg.buildDesired(
   [weekly, { id: "sched1", kind: "schedule", title: "병원", memberId: "sua", date: "2026-11-03", allDay: true, repeat: "none" }],
-  () => "유수아"
+  () => "유수아",
+  (id) => (id === "sua" ? "수아" : "")
 );
 assert(desired.length === 1 && desired[0].localId === "sched1", "only schedules are prepared for Google");
+assert(desired[0].body.summary === "(수아) 병원", desired[0].body.summary);
 
 const over = dbg.buildOverrideEvent(weekly, "2026-11-17", weekly.overrides["2026-11-17"], { memberName: "유수아" });
 assert(over.summary === "할일 · 숙제 미룸", over.summary);
@@ -104,16 +106,18 @@ const trip = dbg.buildGoogleEvent(
     allDay: true,
     repeat: "none",
   },
-  { memberName: "공통" }
+  { memberName: "공통", memberTag: "공통" }
 );
+assert(trip.summary === "(공통) 여행", trip.summary);
 assert(trip.start.date === "2026-11-03" && trip.end.date === "2026-11-06", "inclusive span to exclusive end");
 const tripBack = dbg.parseGoogleEvent({
   id: "y",
-  summary: "여행",
+  summary: trip.summary,
   start: trip.start,
   end: trip.end,
   extendedProperties: trip.extendedProperties,
 });
+assert(tripBack.title === "여행", tripBack.title);
 assert(tripBack.date === "2026-11-03" && tripBack.endDate === "2026-11-05" && tripBack.allDay, "span roundtrip");
 
 const doneTodo = dbg.buildGoogleEvent(
@@ -153,6 +157,91 @@ const bumped = dbg.buildGoogleEvent(
   {}
 );
 assert(bumped.end.dateTime === "2026-11-04T00:30:00", bumped.end.dateTime);
+
+const tagged = dbg.buildGoogleEvent(
+  {
+    id: "abcde",
+    kind: "schedule",
+    title: "영어",
+    memberId: "sua",
+    date: "2026-11-03",
+    allDay: true,
+    repeat: "none",
+  },
+  { memberName: "유수아", memberTag: "수아" }
+);
+assert(tagged.summary === "(수아) 영어", tagged.summary);
+const taggedBack = dbg.parseGoogleEvent({
+  id: "tag",
+  summary: tagged.summary,
+  start: tagged.start,
+  end: tagged.end,
+  extendedProperties: tagged.extendedProperties,
+});
+assert(taggedBack.title === "영어", "prefix stripped on hub events");
+const doubled = dbg.buildGoogleEvent(
+  {
+    id: "abcde",
+    kind: "schedule",
+    title: "(수아) 영어",
+    memberId: "sua",
+    date: "2026-11-03",
+    allDay: true,
+    repeat: "none",
+  },
+  { memberTag: "수아" }
+);
+assert(doubled.summary === "(수아) 영어", doubled.summary);
+const imported = dbg.buildGoogleEvent(
+  {
+    id: "abcde",
+    kind: "schedule",
+    title: "병원",
+    memberId: "family",
+    date: "2026-11-03",
+    allDay: true,
+    repeat: "none",
+    gcalImported: true,
+  },
+  { memberTag: "공통" }
+);
+assert(imported.summary === "병원", "imported events stay unprefixed");
+const silver = dbg.buildGoogleEvent(
+  {
+    id: "abcde",
+    kind: "schedule",
+    title: "산책",
+    memberId: "chilbok",
+    date: "2026-11-03",
+    allDay: true,
+    repeat: "none",
+  },
+  { memberTag: "실버" }
+);
+assert(silver.summary === "(실버) 산책", silver.summary);
+const foreignPrefixed = dbg.parseGoogleEvent({
+  id: "foreign",
+  summary: "(수아) 병원",
+  start: { date: "2026-11-04" },
+  end: { date: "2026-11-05" },
+});
+assert(foreignPrefixed.title === "(수아) 병원", "google-native titles keep their own prefix");
+assert(
+  dbg.needsPush(
+    { gcalSyncedAt: "2026-11-03T00:00:00.000Z" },
+    { imported: false, body: { summary: "(수아) 영어" } },
+    { summary: "영어", updated: "2026-11-03T00:00:00.000Z" }
+  ),
+  "old google title is rewritten once"
+);
+assert(
+  !dbg.needsPush(
+    { gcalSyncedAt: "2026-11-03T00:00:00.000Z" },
+    { imported: false, body: { summary: "(수아) 영어" } },
+    { summary: "(수아) 영어", updated: "2026-11-03T00:00:00.000Z" }
+  ),
+  "matching prefix is left alone"
+);
 
 const seoul = dbg.seoulParts("2026-11-03T15:00:00Z");
 assert(seoul.date === "2026-11-04" && seoul.time === "00:00", JSON.stringify(seoul));
@@ -230,6 +319,7 @@ global.FamilyHubGcalHost = {
   ready: () => true,
   events: () => events,
   memberName: () => "유수아",
+  memberTag: (id) => (id === "sua" ? "수아" : ""),
   saveQuiet: () => {
     saved += 1;
   },
@@ -262,7 +352,7 @@ window.FamilyHubGcal.syncNow()
     assert(english.gcalSyncedAt === "2026-11-03T01:00:00.000Z", "synced at");
     assert(hospital && hospital.gcalImported && hospital.gcalId === "g-foreign", "imported hospital");
     assert(hospital.date === "2026-11-04" && hospital.allDay && hospital.memberId === "family" && hospital.kind === "schedule", "hospital fields");
-    const put = calls.find((call) => call.method === "PUT" && call.body && call.body.summary === "영어");
+    const put = calls.find((call) => call.method === "PUT" && call.body && call.body.summary === "(수아) 영어");
     assert(put, "put english");
     assert(put.body.start.date === "2026-11-03" && put.body.end.date === "2026-11-04", "english all-day range");
     assert(put.body.description.includes("학원") && put.body.description.includes("유수아"), "english description");
