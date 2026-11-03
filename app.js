@@ -5310,6 +5310,47 @@
     if (state.tab === "game") renderGameTab();
     if (state.tab === "settings") renderSettings();
     persistTab();
+    publishWidgetSnapshot();
+  }
+
+  let lastWidgetJson = "";
+
+  function seoulTodayYmd() {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+      const bag = {};
+      parts.forEach((part) => {
+        bag[part.type] = part.value;
+      });
+      if (bag.year && bag.month && bag.day) return `${bag.year}-${bag.month}-${bag.day}`;
+    } catch (_) {
+      /* use the phone's local date */
+    }
+    return ymd(new Date());
+  }
+
+  function publishWidgetSnapshot() {
+    const builder = window.FamilyHubWidgetSnapshot;
+    const cap = window.Capacitor;
+    if (!builder || !cap || typeof cap.isNativePlatform !== "function" || !cap.isNativePlatform()) return;
+    const plugin = cap.Plugins && cap.Plugins.FamilyHubWidget;
+    if (!plugin || typeof plugin.setSnapshot !== "function") return;
+    let json = "";
+    try {
+      json = JSON.stringify(builder.build(state.events, seoulTodayYmd()));
+    } catch (_) {
+      return;
+    }
+    if (!json || json === lastWidgetJson) return;
+    lastWidgetJson = json;
+    Promise.resolve(plugin.setSnapshot({ json })).catch(() => {
+      lastWidgetJson = "";
+    });
   }
 
   function addMonthsYmd(dateStr, months) {

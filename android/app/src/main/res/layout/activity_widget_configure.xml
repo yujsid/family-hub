@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:text="누구의 오늘을 볼까요?"
+            android:textColor="@color/widget_text"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="16dp"
+            android:text="이 위젯에는 고른 사람의 오늘 일정과 할일만 나옵니다. 누르면 가족허브가 열립니다."
+            android:textColor="@color/widget_muted"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/widget_member_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <RadioButton
+                android:id="@+id/widget_member_sua"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:tag="sua"
+                android:text="수아" />
+
+            <RadioButton
+                android:id="@+id/widget_member_sumin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:tag="sumin"
+                android:text="수민" />
+
+            <RadioButton
+                android:id="@+id/widget_member_jaesang"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:tag="jaesang"
+                android:text="재상" />
+
+            <RadioButton
+                android:id="@+id/widget_member_sinjeong"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:tag="sinjeong"
+                android:text="신정" />
+
+            <RadioButton
+                android:id="@+id/widget_member_chilbok"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:tag="chilbok"
+                android:text="실버" />
+
+            <RadioButton
+                android:id="@+id/widget_member_family"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:tag="family"
+                android:text="공통" />
+        </RadioGroup>
+
+        <Button
+            android:id="@+id/widget_configure_save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="이 사람으로 위젯 추가" />
+    </LinearLayout>
+</ScrollView>

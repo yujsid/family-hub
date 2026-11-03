@@ -2,7 +2,7 @@
 const path = require("path");
 const root = path.join(__dirname, "..");
 const www = path.join(root, "www");
-const files = ["index.html","styles.css","theme-veggie.css","app.js","gcal.js","firebase-config.js","manifest.webmanifest","sw.js"];
+const files = ["index.html","styles.css","theme-veggie.css","app.js","gcal.js","widget-snapshot.js","firebase-config.js","manifest.webmanifest","sw.js"];
 const assetDirs = [
   ["icons", (f) => f.endsWith(".png")],
   ["img", (f) => /\.(jpe?g|png|webp)$/i.test(f)],

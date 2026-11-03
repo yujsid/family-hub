@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_row_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="36dp"
+    android:orientation="horizontal"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/widget_row_kind"
+        android:layout_width="36dp"
+        android:layout_height="wrap_content"
+        android:text="일정"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_row_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:textColor="@color/widget_text"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/widget_row_meta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/widget_muted"
+        android:textSize="12sp" />
+</LinearLayout>

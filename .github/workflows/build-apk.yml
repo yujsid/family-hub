@@ -8,6 +8,7 @@ on:
       - "android/**"
       - "www/**"
       - "app.js"
+      - "widget-snapshot.js"
       - "index.html"
       - "styles.css"
       - "firebase-config.js"
