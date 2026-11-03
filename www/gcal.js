@@ -160,7 +160,20 @@
     return Boolean(ev.doneDates && ev.doneDates[date]);
   }
 
-  const MEMBER_TAG_RE = /^\((?:재상|신정|수아|수민|실버|공통)\)\s*/;
+  const MEMBER_TAG_RE = /^\((재상|신정|수아|수민|실버|공통)\)\s*/;
+  const MEMBER_BY_TAG = {
+    재상: "jaesang",
+    신정: "sinjeong",
+    수아: "sua",
+    수민: "sumin",
+    실버: "chilbok",
+    공통: "family",
+  };
+
+  function memberIdFromTitle(title) {
+    const match = String(title || "").match(MEMBER_TAG_RE);
+    return match ? MEMBER_BY_TAG[match[1]] || "" : "";
+  }
 
   function scheduleSummary(title, ctx, imported) {
     const tag = ctx && ctx.memberTag ? String(ctx.memberTag).trim() : "";
@@ -354,7 +367,8 @@
       kind = "todo";
       title = title.replace(/^할일\s*·\s*/, "");
     }
-    if (priv.familyHub) title = title.replace(MEMBER_TAG_RE, "");
+    const memberFromTag = memberIdFromTitle(title);
+    if (memberFromTag) title = title.replace(MEMBER_TAG_RE, "");
     if (!title) title = "(제목 없음)";
     let note = String(g.description || "");
     const doneDatesList = parseDoneLine(note);
@@ -377,8 +391,10 @@
       note,
       kind,
       done,
+      rawTitle: String(g.summary || ""),
       doneDatesList,
-      memberId: priv.familyHubMember || "",
+      memberId: priv.familyHubMember || memberFromTag || "",
+      memberFromTag,
       familyHubId: priv.familyHubId || "",
       googleId: g.id || "",
       updated: g.updated || "",
@@ -867,6 +883,23 @@
     return saved || "jaesang";
   }
 
+  function adoptImportedPrefix(ev, parsed) {
+    if (!ev || !ev.gcalImported || !parsed || !parsed.memberFromTag) return false;
+    const raw = String(parsed.rawTitle || "");
+    if (ev.title !== raw && ev.title !== parsed.title) return false;
+    let changed = false;
+    if (ev.title === raw && ev.title !== parsed.title) {
+      ev.title = parsed.title;
+      ev.memberId = parsed.memberId;
+      changed = true;
+    }
+    if ((ev.memberId === "family" || !ev.memberId) && ev.memberId !== parsed.memberId) {
+      ev.memberId = parsed.memberId;
+      changed = true;
+    }
+    return changed;
+  }
+
   function eventFromParsed(parsed) {
     const h = host();
     const kind = parsed.kind === "todo" ? "todo" : "schedule";
@@ -906,12 +939,16 @@
     if (!ev.gcalSyncedAt) return true;
     if (ev.updatedAt && ev.updatedAt > ev.gcalSyncedAt) return true;
     if (remote && remote.updated && remote.updated > ev.gcalSyncedAt) return true;
-    if (remote && item.body && remote.summary !== item.body.summary) return true;
+    if (remote && item.body && remote.summary !== item.body.summary) {
+      const remoteTitle = String(remote.summary || "").replace(MEMBER_TAG_RE, "");
+      const importedSame = item.imported && remoteTitle === item.body.summary;
+      if (!importedSame) return true;
+    }
     if (!item.imported && !remote) return true;
     return false;
   }
 
-  async function pushOne(calendarId, token, item) {
+  async function pushOne(calendarId, token, item, remote) {
     const body = { ...item.body };
     const hasRule = Array.isArray(body.recurrence) && body.recurrence.length > 0;
     if (!hasRule) {
@@ -920,6 +957,10 @@
     }
     if (item.imported && !item.occurrence) {
       delete body.colorId;
+      if (remote && memberIdFromTitle(remote.summary) && !memberIdFromTitle(body.summary)) {
+        const tag = String(remote.summary).match(MEMBER_TAG_RE);
+        if (tag) body.summary = `(${tag[1]}) ${body.summary}`;
+      }
       return patchEvent(calendarId, token, item.googleId, body);
     }
     return upsert(calendarId, token, item.googleId, body);
@@ -978,7 +1019,11 @@
         foreign.forEach((g) => {
           const parsed = parseGoogleEvent(g);
           if (!shouldImport(parsed, g)) return;
-          if (events.some((ev) => ev.gcalId === g.id)) return;
+          const existing = events.find((ev) => ev.gcalId === g.id);
+          if (existing) {
+            if (adoptImportedPrefix(existing, parsed)) changed = true;
+            return;
+          }
           const link = findLinkable(events, parsed);
           if (link) {
             link.gcalId = g.id;
@@ -1013,7 +1058,7 @@
       await pool(pending, 1, async (item) => {
         const ev = events.find((row) => row.id === item.localId);
         try {
-          const result = await pushOne(cal.id, token, item);
+          const result = await pushOne(cal.id, token, item, byHub.get(item.familyHubId));
           if (ev && !item.occurrence) {
             const synced = (result && result.updated) || new Date().toISOString();
             if (ev.gcalId !== item.googleId || ev.gcalSyncedAt !== synced) changed = true;
@@ -1151,7 +1196,7 @@
           <button type="button" id="gcal-save-client">클라이언트 ID 저장</button>
         </div>
       </details>
-      <p class="hint">일정만 가족 캘린더와 맞춥니다. 구글 제목 앞에는 (수아), (수민)처럼 누구 일정인지 붙고, 허브 화면의 제목은 그대로입니다. 할 일과 용돈 도장은 올리지 않습니다. 가족 캘린더에 직접 넣은 일정은 허브 일정으로 들어오고, 반복 일정은 반복 규칙으로 맞춥니다.</p>
+      <p class="hint">일정만 가족 캘린더와 맞춥니다. 구글 제목 앞에는 (수아), (수민)처럼 누구 일정인지 붙고, 허브 화면의 제목은 그대로입니다. 구글에 (수아) 축구처럼 적힌 일정은 수아의 축구 일정으로 들어옵니다. 할 일과 용돈 도장은 올리지 않습니다.</p>
     </div>`;
   }
 

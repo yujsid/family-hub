@@ -225,7 +225,29 @@ const foreignPrefixed = dbg.parseGoogleEvent({
   start: { date: "2026-11-04" },
   end: { date: "2026-11-05" },
 });
-assert(foreignPrefixed.title === "(수아) 병원", "google-native titles keep their own prefix");
+assert(foreignPrefixed.title === "병원" && foreignPrefixed.memberId === "sua", JSON.stringify(foreignPrefixed));
+const tight = dbg.parseGoogleEvent({
+  id: "tight",
+  summary: "(수아)축구",
+  start: { date: "2026-11-05" },
+  end: { date: "2026-11-06" },
+});
+assert(tight.title === "축구" && tight.memberId === "sua", JSON.stringify(tight));
+const silverIn = dbg.parseGoogleEvent({
+  id: "pet",
+  summary: "(실버) 산책",
+  start: { date: "2026-11-04" },
+  end: { date: "2026-11-05" },
+});
+assert(silverIn.title === "산책" && silverIn.memberId === "chilbok", JSON.stringify(silverIn));
+const owned = dbg.parseGoogleEvent({
+  id: "owned",
+  summary: "(수민) 영어",
+  start: { date: "2026-11-03" },
+  end: { date: "2026-11-04" },
+  extendedProperties: { private: { familyHub: "1", familyHubMember: "sua", familyHubKind: "schedule" } },
+});
+assert(owned.title === "영어" && owned.memberId === "sua", "hub member stays when the google prefix differs");
 assert(
   dbg.needsPush(
     { gcalSyncedAt: "2026-11-03T00:00:00.000Z" },
@@ -241,6 +263,14 @@ assert(
     { summary: "(수아) 영어", updated: "2026-11-03T00:00:00.000Z" }
   ),
   "matching prefix is left alone"
+);
+assert(
+  !dbg.needsPush(
+    { gcalSyncedAt: "2026-11-03T00:00:00.000Z" },
+    { imported: true, body: { summary: "축구" } },
+    { summary: "(수아) 축구", updated: "2026-11-03T00:00:00.000Z" }
+  ),
+  "imported prefix is not written back"
 );
 
 const seoul = dbg.seoulParts("2026-11-03T15:00:00Z");
@@ -280,6 +310,24 @@ global.fetch = async (url, opts = {}) => {
           end: { date: "2026-11-05" },
         },
         {
+          id: "g-soccer",
+          summary: "(수아) 축구",
+          status: "confirmed",
+          eventType: "default",
+          updated: "2026-11-03T00:20:00.000Z",
+          start: { date: "2026-11-05" },
+          end: { date: "2026-11-06" },
+        },
+        {
+          id: "g-piano",
+          summary: "(수민) 피아노",
+          status: "confirmed",
+          eventType: "default",
+          updated: "2026-11-02T00:00:00.000Z",
+          start: { date: "2026-11-06" },
+          end: { date: "2026-11-07" },
+        },
+        {
           id: "g-old",
           summary: "지운일정",
           status: "confirmed",
@@ -313,20 +361,33 @@ const events = [
     excludeDates: [],
     overrides: {},
   },
+  {
+    id: "old-piano",
+    kind: "schedule",
+    title: "(수민) 피아노",
+    memberId: "family",
+    date: "2026-11-06",
+    allDay: true,
+    repeat: "none",
+    gcalId: "g-piano",
+    gcalImported: true,
+    gcalSyncedAt: "2026-11-02T00:00:00.000Z",
+  },
 ];
 let saved = 0;
+let made = 0;
 global.FamilyHubGcalHost = {
   ready: () => true,
   events: () => events,
   memberName: () => "유수아",
-  memberTag: (id) => (id === "sua" ? "수아" : ""),
+  memberTag: (id) => (id === "sua" ? "수아" : id === "sumin" ? "수민" : ""),
   saveQuiet: () => {
     saved += 1;
   },
   setSyncing() {},
   toast() {},
   refresh() {},
-  newId: () => "new-hospital",
+  newId: () => (made++ === 0 ? "new-hospital" : "new-soccer"),
 };
 global.google = {
   accounts: {
@@ -347,11 +408,15 @@ window.FamilyHubGcal.syncNow()
   .then(async () => {
     const english = events.find((ev) => ev.title === "영어");
     const hospital = events.find((ev) => ev.title === "병원");
-    assert(events.length === 2, `expected 2 events, got ${events.map((ev) => ev.title).join(",")}`);
+    const soccer = events.find((ev) => ev.title === "축구");
+    const piano = events.find((ev) => ev.gcalId === "g-piano");
+    assert(events.length === 4, `expected 4 events, got ${events.map((ev) => ev.title).join(",")}`);
     assert(english.gcalId === gid, `gcal id ${english.gcalId}`);
     assert(english.gcalSyncedAt === "2026-11-03T01:00:00.000Z", "synced at");
     assert(hospital && hospital.gcalImported && hospital.gcalId === "g-foreign", "imported hospital");
     assert(hospital.date === "2026-11-04" && hospital.allDay && hospital.memberId === "family" && hospital.kind === "schedule", "hospital fields");
+    assert(soccer && soccer.gcalImported && soccer.memberId === "sua" && soccer.date === "2026-11-05", JSON.stringify(soccer));
+    assert(piano && piano.title === "피아노" && piano.memberId === "sumin", JSON.stringify(piano));
     const put = calls.find((call) => call.method === "PUT" && call.body && call.body.summary === "(수아) 영어");
     assert(put, "put english");
     assert(put.body.start.date === "2026-11-03" && put.body.end.date === "2026-11-04", "english all-day range");
