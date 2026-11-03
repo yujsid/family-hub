@@ -67,15 +67,14 @@ public class TodayWidgetProvider extends AppWidgetProvider {
 
     private static void updateOne(Context context, AppWidgetManager manager, int appWidgetId) {
         String memberId = WidgetStore.memberId(context, appWidgetId);
-        String today = WidgetStore.seoulToday();
         WidgetStore.DayList day = WidgetStore.loadDay(context, memberId);
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_today);
         views.setTextViewText(R.id.widget_title, WidgetStore.memberLabel(memberId));
-        views.setTextViewText(R.id.widget_date, WidgetStore.seoulHeading(today));
+        views.setTextViewText(R.id.widget_date, WidgetStore.spanHeading());
         if (!day.ready) {
-            views.setTextViewText(R.id.widget_empty, "가족허브를 한 번 열면 오늘 일정이 나타납니다");
+            views.setTextViewText(R.id.widget_empty, "가족허브를 한 번 열면 오늘부터 모레 일정이 나타납니다");
         } else if (day.items.isEmpty()) {
-            views.setTextViewText(R.id.widget_empty, "오늘 일정과 할일이 없습니다");
+            views.setTextViewText(R.id.widget_empty, "오늘부터 모레까지 일정과 할일이 없습니다");
         }
         if (day.items.isEmpty()) {
             views.setViewVisibility(R.id.widget_list, android.view.View.GONE);

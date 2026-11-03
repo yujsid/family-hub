@@ -14,7 +14,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingBottom="8dp"
-            android:text="누구의 오늘을 볼까요?"
+            android:text="누구의 일정을 볼까요?"
             android:textColor="@color/widget_text"
             android:textSize="22sp"
             android:textStyle="bold" />
@@ -23,7 +23,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingBottom="16dp"
-            android:text="이 위젯에는 고른 사람의 오늘 일정과 할일만 나옵니다. 누르면 가족허브가 열립니다."
+            android:text="고른 사람의 오늘부터 모레까지 일정과 할일이 나옵니다. 공통 일정은 누구의 위젯에나 보입니다. 누르면 가족허브가 열립니다."
             android:textColor="@color/widget_muted"
             android:textSize="14sp" />
 

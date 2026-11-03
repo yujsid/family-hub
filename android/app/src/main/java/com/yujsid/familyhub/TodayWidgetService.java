@@ -55,9 +55,17 @@ public class TodayWidgetService extends RemoteViewsService {
 
         @Override
         public RemoteViews getViewAt(int position) {
-            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_today_row);
-            if (position < 0 || position >= items.size()) return views;
+            if (position < 0 || position >= items.size()) {
+                return new RemoteViews(context.getPackageName(), R.layout.widget_today_row);
+            }
             WidgetStore.Item item = items.get(position);
+            if (item.header) {
+                RemoteViews header = new RemoteViews(context.getPackageName(), R.layout.widget_today_header);
+                header.setTextViewText(R.id.widget_day_label, item.title);
+                header.setOnClickFillInIntent(R.id.widget_day_label, new Intent());
+                return header;
+            }
+            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_today_row);
             boolean todo = "todo".equals(item.kind);
             views.setTextViewText(R.id.widget_row_kind, todo ? "할일" : "일정");
             views.setTextColor(R.id.widget_row_kind, todo ? 0xFFB8860B : 0xFF5E8F74);
@@ -69,6 +77,7 @@ public class TodayWidgetService extends RemoteViewsService {
             else if (item.dueLabel != null && !item.dueLabel.isEmpty()) meta = item.dueLabel + " 지연";
             else if (item.allDay || item.time.isEmpty()) meta = todo ? "" : "하루 종일";
             else meta = item.time;
+            if (item.shared) meta = meta.isEmpty() ? "공통" : "공통 · " + meta;
             views.setTextViewText(R.id.widget_row_meta, meta);
             views.setOnClickFillInIntent(R.id.widget_row_root, new Intent());
             return views;
@@ -81,7 +90,7 @@ public class TodayWidgetService extends RemoteViewsService {
 
         @Override
         public int getViewTypeCount() {
-            return 1;
+            return 2;
         }
 
         @Override
