@@ -1,9 +1,9 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">가족허브</string>
-    <string name="title_activity_main">가족허브</string>
+    <string name="app_name">채소가족</string>
+    <string name="title_activity_main">채소가족</string>
     <string name="package_name">com.yujsid.familyhub</string>
     <string name="custom_url_scheme">com.yujsid.familyhub</string>
     <string name="widget_name">오늘 일정</string>
-    <string name="widget_description">고른 사람의 오늘 일정과 할일을 보여 줍니다. 누르면 가족허브가 열립니다.</string>
+    <string name="widget_description">고른 사람의 오늘 일정과 할일을 보여 줍니다. 누르면 채소가족이 열립니다.</string>
 </resources>

@@ -73,7 +73,7 @@ public class TodayWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.widget_title, WidgetStore.memberLabel(memberId));
         views.setTextViewText(R.id.widget_date, WidgetStore.seoulHeading(today));
         if (!day.ready) {
-            views.setTextViewText(R.id.widget_empty, "가족허브를 한 번 열면 오늘 일정이 나타납니다");
+            views.setTextViewText(R.id.widget_empty, "채소가족을 한 번 열면 오늘 일정이 나타납니다");
         } else if (day.items.isEmpty()) {
             views.setTextViewText(R.id.widget_empty, "오늘 일정과 할일이 없습니다");
         }

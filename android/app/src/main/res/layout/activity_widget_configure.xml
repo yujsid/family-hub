@@ -23,7 +23,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingBottom="16dp"
-            android:text="이 위젯에는 고른 사람의 오늘 일정과 할일만 나옵니다. 누르면 가족허브가 열립니다."
+            android:text="이 위젯에는 고른 사람의 오늘 일정과 할일만 나옵니다. 누르면 채소가족이 열립니다."
             android:textColor="@color/widget_muted"
             android:textSize="14sp" />
 
