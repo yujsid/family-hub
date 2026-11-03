@@ -411,7 +411,7 @@
   function syncSignature(events) {
     return JSON.stringify(
       (events || [])
-        .filter((ev) => ev && (ev.kind === "schedule" || ev.kind === "todo"))
+        .filter((ev) => ev && ev.kind === "schedule")
         .map((ev) => ({
           id: ev.id,
           kind: ev.kind,
@@ -438,7 +438,7 @@
   function buildDesired(events, memberName) {
     const desired = [];
     (events || []).forEach((ev) => {
-      if (!ev || (ev.kind !== "schedule" && ev.kind !== "todo")) return;
+      if (!ev || ev.kind !== "schedule") return;
       if (!ev.date || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) return;
       const ctx = { memberName: memberName(ev.memberId) };
       desired.push({
@@ -949,7 +949,7 @@
 
       let changed = false;
       events.forEach((ev) => {
-        if (!ev || (ev.kind !== "schedule" && ev.kind !== "todo")) return;
+        if (!ev || ev.kind !== "schedule") return;
         const remote = byHub.get(ev.id);
         if (!remote || hubWins(ev, remote)) return;
         const parsed = parseGoogleEvent(remote);
@@ -1132,7 +1132,7 @@
           <button type="button" id="gcal-save-client">클라이언트 ID 저장</button>
         </div>
       </details>
-      <p class="hint">할 일은 가족 캘린더 일정으로 올라가며, 완료하면 제목 앞에 ✓가 붙습니다. 반복 일정은 반복 규칙으로 맞추고, 그날만 수정한 일정은 그 날짜만 따로 올립니다.</p>
+      <p class="hint">일정만 가족 캘린더와 맞춥니다. 할 일과 용돈 도장은 올리지 않습니다. 가족 캘린더에 직접 넣은 일정은 허브 일정으로 들어오고, 반복 일정은 반복 규칙으로 맞춥니다.</p>
     </div>`;
   }
 

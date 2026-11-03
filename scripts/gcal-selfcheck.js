@@ -63,6 +63,11 @@ assert(body.description.includes("유수아") && body.description.includes("수�
 assert(body.description.includes("완료: 2026-11-03"), "done line");
 assert(body.extendedProperties.private.familyHubKind === "todo", "kind prop");
 assert(body.colorId === "10", "member color");
+const desired = dbg.buildDesired(
+  [weekly, { id: "sched1", kind: "schedule", title: "병원", memberId: "sua", date: "2026-11-03", allDay: true, repeat: "none" }],
+  () => "유수아"
+);
+assert(desired.length === 1 && desired[0].localId === "sched1", "only schedules are prepared for Google");
 
 const over = dbg.buildOverrideEvent(weekly, "2026-11-17", weekly.overrides["2026-11-17"], { memberName: "유수아" });
 assert(over.summary === "할일 · 숙제 미룸", over.summary);

@@ -1217,7 +1217,23 @@
   }
 
   function isTodoDone(ev, date) {
-    return Boolean(ev.doneDates && ev.doneDates[ymd(date)]);
+    const key = typeof date === "string" ? date : ymd(date);
+    return Boolean(ev.doneDates && ev.doneDates[key]);
+  }
+
+  function completionYmd(ev, occurrenceDate) {
+    const key = typeof occurrenceDate === "string" ? occurrenceDate : ymd(occurrenceDate);
+    const raw = ev.doneDates && ev.doneDates[key];
+    if (!raw) return "";
+    if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    return key;
+  }
+
+  function completionLabel(ev, occurrenceDate) {
+    const doneOn = completionYmd(ev, occurrenceDate);
+    if (!doneOn) return "";
+    const d = parseYmd(doneOn);
+    return `${d.getMonth() + 1}/${d.getDate()} 완료`;
   }
 
   function emptyState(text) {
@@ -1563,7 +1579,7 @@
           }
           <div class="item-body">
             <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${esc(occ.title)}</strong>
-            <div class="meta">${esc(m.name)} · ${formatEventWhen(occ, ev)}${isRecurring(ev) ? " · 반복" : ""}${isMultiDayEvent(ev) ? " · 기간" : ""}</div>
+            <div class="meta">${esc(m.name)} · ${formatEventWhen(occ, ev)}${isRecurring(ev) ? " · 반복" : ""}${isMultiDayEvent(ev) ? " · 기간" : ""}${done ? ` · ${completionLabel(ev, d)}` : ""}</div>
           </div>
           <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
         </div>`;
@@ -1662,7 +1678,7 @@
       <input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />
       <div class="item-body">
         <strong>${done ? "✓ " : "○ "}${esc(occ.title)}</strong>
-        <div class="meta">${esc(m.name)} · ${formatTodoDateLabel(d)} · ${time}${isRecurring(ev) ? " · 반복" : ""}${overdue && !done ? " · 지연" : ""}</div>
+        <div class="meta">${esc(m.name)} · ${formatTodoDateLabel(d)} · ${time}${isRecurring(ev) ? " · 반복" : ""}${done ? ` · ${completionLabel(ev, d)}` : overdue ? " · 지연" : ""}</div>
       </div>
       <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
     </div>`;
@@ -2066,17 +2082,19 @@
   }
 
   function completedTodosInMonth(memberId, year, month) {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
     let count = 0;
-    for (let day = 1; day <= daysInMonth; day++) {
-      const d = startOfDay(new Date(year, month, day));
-      state.events.forEach((ev) => {
-        if (ev.kind !== "todo" || !occursOn(ev, d)) return;
-        const occ = getOccurrence(ev, d);
+    state.events.forEach((ev) => {
+      if (ev.kind !== "todo" || !ev.doneDates) return;
+      Object.keys(ev.doneDates).forEach((due) => {
+        if (!ev.doneDates[due]) return;
+        const dueDate = parseYmd(due);
+        if (!occursOn(ev, dueDate)) return;
+        const occ = getOccurrence(ev, dueDate);
         if (occ.memberId !== memberId) return;
-        if (isTodoDone(ev, d)) count += 1;
+        const doneOn = parseYmd(completionYmd(ev, due));
+        if (doneOn.getFullYear() === year && doneOn.getMonth() === month) count += 1;
       });
-    }
+    });
     return count;
   }
 
@@ -2848,7 +2866,7 @@
         <label>할 일 1개 완료 시 용돈
           <input type="number" id="todo-rate-input" name="todoRate" min="0" step="50" value="${state.todoRate || 0}" />
         </label>
-        <p class="hint">유수아·유수민이 할 일을 완료하면 매달 개수 × 이 금액이 용돈에 더해집니다.</p>
+        <p class="hint">유수아·유수민이 할 일을 완료하면, 체크한 날의 달에 개수 × 이 금액이 용돈에 더해집니다. 10월 29일 할일을 11월 2일에 끝내면 11월 용돈입니다.</p>
       </div>
       <div class="cat-edit-head"><span>이모지</span><span>항목 이름</span><span>금액</span><span></span></div>
       ${rows || `<p class="hint">항목이 없습니다. 아래에서 추가해 주세요.</p>`}
@@ -6194,7 +6212,7 @@
       const ev = state.events.find((x) => x.id === box.dataset.toggleTodo);
       if (!ev) return;
       ev.doneDates = ev.doneDates || {};
-      if (box.checked) ev.doneDates[box.dataset.date] = true;
+      if (box.checked) ev.doneDates[box.dataset.date] = ymd(new Date());
       else delete ev.doneDates[box.dataset.date];
       ev.updatedAt = new Date().toISOString();
       save();
