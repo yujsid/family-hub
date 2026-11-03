@@ -25,6 +25,7 @@
   let syncPromise = null;
   let autoTimer = null;
   let lastSignature = "";
+  let rateLimitUntil = 0;
 
   function host() {
     return window.FamilyHubGcalHost || null;
@@ -566,6 +567,9 @@
       return "Google Cloud에서 Google Calendar API를 사용 설정해 주세요.";
     }
     if (/redirect_uri|origin/i.test(raw)) return `이 사이트 주소가 OAuth 승인된 자바스크립트 원본에 없습니다. ${originHint()} 를 넣어 주세요.`;
+    if (/rate limit|rateLimit|userRateLimit|quota/i.test(raw)) {
+      return "구글이 짧은 시간에 일정 수정 요청이 너무 많다고 잠시 막았습니다. 1분 정도 기다린 뒤 「지금 동기화」를 한 번만 눌러 주세요.";
+    }
     if (/만료|로그인/.test(raw)) return raw;
     return raw;
   }
@@ -655,16 +659,39 @@
     return requestToken(wasLinked() ? "" : "consent");
   }
 
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function isRateLimitMessage(detail) {
+    return /rate limit|rateLimit|userRateLimit|quotaExceeded|Quota exceeded/i.test(detail || "");
+  }
+
   async function gfetch(url, token, options) {
     const opts = options || {};
     const headers = { Authorization: `Bearer ${token}` };
     if (opts.body) headers["Content-Type"] = "application/json";
-    const res = await fetch(url, { ...opts, headers });
-    if (res.status === 401) {
-      storageRemove(TOKEN_KEY);
-      throw new Error("구글 로그인이 만료되었습니다. 다시 연결해 주세요.");
+    let wait = 2000;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const res = await fetch(url, { ...opts, headers });
+      if (res.status === 401) {
+        storageRemove(TOKEN_KEY);
+        throw new Error("구글 로그인이 만료되었습니다. 다시 연결해 주세요.");
+      }
+      if (res.status === 403) {
+        const detail = await readError(res);
+        if (isRateLimitMessage(detail) && attempt < 5) {
+          rateLimitUntil = Date.now() + wait;
+          setStatus(`구글이 요청을 잠깐 막았습니다. ${Math.round(wait / 1000)}초 뒤 이어서 맞춥니다…`);
+          await sleep(wait);
+          wait = Math.min(wait * 2, 30000);
+          continue;
+        }
+        throw new Error(detail);
+      }
+      return res;
     }
-    return res;
+    throw new Error("403 Rate Limit Exceeded");
   }
 
   async function readError(res) {
@@ -856,8 +883,17 @@
       overrides: {},
       gcalId: parsed.googleId,
       gcalImported: true,
-      gcalSyncedAt: parsed.updated || "",
+      gcalSyncedAt: parsed.updated || new Date().toISOString(),
     };
+  }
+
+  function needsPush(ev, item, remote) {
+    if (!ev) return true;
+    if (!ev.gcalSyncedAt) return true;
+    if (ev.updatedAt && ev.updatedAt > ev.gcalSyncedAt) return true;
+    if (remote && remote.updated && remote.updated > ev.gcalSyncedAt) return true;
+    if (!item.imported && !remote) return true;
+    return false;
   }
 
   async function pushOne(calendarId, token, item) {
@@ -919,6 +955,7 @@
         const parsed = parseGoogleEvent(remote);
         if (!parsed) return;
         applyParsed(ev, parsed);
+        if (remote.updated) ev.gcalSyncedAt = remote.updated;
         changed = true;
       });
 
@@ -931,7 +968,7 @@
           if (link) {
             link.gcalId = g.id;
             link.gcalImported = true;
-            if (!link.gcalSyncedAt) link.gcalSyncedAt = g.updated || "";
+            if (!link.gcalSyncedAt) link.gcalSyncedAt = g.updated || new Date().toISOString();
             changed = true;
             return;
           }
@@ -947,10 +984,14 @@
         if (!wanted.has(hid)) toDelete.push(g);
       });
 
+      const pending = desired.filter((item) => {
+        const ev = events.find((row) => row.id === item.localId);
+        return needsPush(ev, item, byHub.get(item.familyHubId));
+      });
       let done = 0;
-      const total = Math.max(1, desired.length + toDelete.length);
+      const total = Math.max(1, pending.length + toDelete.length);
       const removedLocal = [];
-      await pool(desired, 4, async (item) => {
+      await pool(pending, 1, async (item) => {
         const ev = events.find((row) => row.id === item.localId);
         try {
           const result = await pushOne(cal.id, token, item);
@@ -960,6 +1001,7 @@
             ev.gcalId = item.googleId;
             ev.gcalSyncedAt = synced;
           }
+          await sleep(350);
         } catch (err) {
           if (item.imported && ev && /404|notFound/i.test(String(err && err.message))) {
             removedLocal.push(ev.id);
@@ -977,8 +1019,9 @@
         }
       }
 
-      await pool(toDelete, 4, async (g) => {
+      await pool(toDelete, 1, async (g) => {
         await deleteEvent(cal.id, token, g.id);
+        await sleep(350);
         done += 1;
         setStatus(`동기화 중… ${Math.min(done, total)}/${total}`);
       });
@@ -993,7 +1036,8 @@
     } catch (err) {
       const msg = friendlyError(err);
       setStatus(msg, true);
-      if (h.toast && (!auto || /만료|로그인|클라이언트/.test(msg))) h.toast(msg);
+      if (isRateLimitMessage(msg)) rateLimitUntil = Date.now() + 60000;
+      if (h.toast && (!auto || /만료|로그인|클라이언트|막았/.test(msg))) h.toast(msg);
       if (h.refresh) h.refresh();
     } finally {
       setBusy(false);
@@ -1012,6 +1056,7 @@
   function onLocalChange() {
     const h = host();
     if (!h || !h.ready() || !autoEnabled() || !readToken() || !getClientId()) return;
+    if (Date.now() < rateLimitUntil) return;
     const sig = syncSignature(h.events());
     if (sig && sig === lastSignature) return;
     clearTimeout(autoTimer);

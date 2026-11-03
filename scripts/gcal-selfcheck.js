@@ -263,7 +263,7 @@ window.FamilyHubGcal.syncNow()
     assert(put.body.description.includes("학원") && put.body.description.includes("유수아"), "english description");
     assert(put.body.extendedProperties.private.familyHubId === english.id, "hub id");
     assert(put.url.includes("/calendars/fam/"), put.url);
-    assert(calls.some((call) => call.method === "PATCH" && call.url.includes("g-foreign")), "patch imported");
+    assert(!calls.some((call) => call.method === "PATCH"), "leave unchanged imported events untouched");
     assert(calls.some((call) => call.method === "DELETE" && call.url.includes("g-old")), "delete removed hub event");
     assert(!calls.some((call) => call.url.includes("/calendars/work/")), "do not write read-only calendar");
     assert(saved === 1, `save quiet ${saved}`);
