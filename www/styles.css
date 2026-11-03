@@ -337,6 +337,16 @@ button.primary {
   text-overflow: ellipsis;
 }
 .pill.todo.done { opacity: 0.55; text-decoration: line-through; }
+.pill.todo.overdue {
+  background: #fff1f0;
+  border-style: solid;
+  border-color: #c62828;
+}
+.pill.todo.overdue .pill-kind,
+.pill.todo.overdue .pill-who,
+.pill.todo.overdue .pill-text {
+  color: #b42318;
+}
 .more { font-size: 11px; color: var(--muted); }
 
 .week-grid, .day-list {

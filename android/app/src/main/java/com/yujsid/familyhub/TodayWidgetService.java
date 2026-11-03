@@ -66,6 +66,7 @@ public class TodayWidgetService extends RemoteViewsService {
             views.setTextColor(R.id.widget_row_title, item.done ? 0xFF8A7968 : 0xFF3D3428);
             String meta;
             if (item.done) meta = "완료";
+            else if (item.dueLabel != null && !item.dueLabel.isEmpty()) meta = item.dueLabel + " 지연";
             else if (item.allDay || item.time.isEmpty()) meta = todo ? "" : "하루 종일";
             else meta = item.time;
             views.setTextViewText(R.id.widget_row_meta, meta);

@@ -1351,18 +1351,49 @@
     return `${occ.startTime || ""} ~ ${occ.endTime || ""}`;
   }
 
-  function pillHtml(ev, date) {
+  function pillHtml(ev, date, opts = {}) {
+    const overdue = Boolean(opts.overdue);
     const occ = getOccurrence(ev, date);
     const m = memberById(occ.memberId);
     const who = memberLabel(m);
     const done = occ.kind === "todo" && isTodoDone(ev, date);
     const kindTag = occ.kind === "todo" ? "할일" : "일정";
     const mark = occ.kind === "todo" ? (done ? "✓ " : "○ ") : "";
-    const time = formatTimeRange(occ);
-    return `<div class="pill ${occ.kind} ${done ? "done" : ""}" style="--member:${m.color}" title="${m.name} · ${kindTag}">
+    const time = overdue ? "" : formatTimeRange(occ);
+    const dueMark = overdue ? `${date.getMonth() + 1}/${date.getDate()} ` : "";
+    const titleTip = overdue ? `${m.name} · 할일 · ${date.getMonth() + 1}/${date.getDate()} 지연` : `${m.name} · ${kindTag}`;
+    return `<div class="pill ${occ.kind} ${done ? "done" : ""} ${overdue ? "overdue" : ""}" style="--member:${m.color}" title="${titleTip}">
       <span class="pill-kind">${kindTag}</span>
       <span class="pill-who">${who}</span>
-      <span class="pill-text">${mark}${time ? time + " " : ""}${occ.title}</span>
+      <span class="pill-text">${mark}${dueMark}${time ? time + " " : ""}${occ.title}</span>
+    </div>`;
+  }
+
+  function agendaEntries(date, late) {
+    const own = eventsOn(date).map((ev) => ({ ev, due: startOfDay(date), overdue: false }));
+    if (!sameDay(date, new Date()) || !state.typeFilter.todo) return own;
+    const overdue = (late || delayedTodoItems()).map(({ ev, d }) => ({ ev, due: d, overdue: true }));
+    return overdue.concat(own);
+  }
+
+  function agendaRowHtml(ev, due, overdue) {
+    const occ = getOccurrence(ev, due);
+    const m = memberById(occ.memberId);
+    const done = occ.kind === "todo" && isTodoDone(ev, due);
+    const time = formatEventWhen(occ, ev);
+    const dueNote = overdue ? `${due.getMonth() + 1}월 ${due.getDate()}일 · 지연` : time;
+    return `<div class="item-row kind-${occ.kind}${done ? " is-done" : ""}${overdue ? " is-overdue" : ""}" style="--member:${m.color}">
+      <span class="item-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
+      ${
+        occ.kind === "todo"
+          ? `<input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(due)}" ${done ? "checked" : ""} />`
+          : `<span class="dot" style="background:${m.color};margin-top:6px"></span>`
+      }
+      <div class="item-body">
+        <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${esc(occ.title)}</strong>
+        <div class="meta">${esc(m.name)} · ${dueNote}${isRecurring(ev) ? " · 반복" : ""}${!overdue && isMultiDayEvent(ev) ? " · 기간" : ""}${done ? ` · ${completionLabel(ev, due)}` : ""}</div>
+      </div>
+      <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(due)}">수정</button>
     </div>`;
   }
 
@@ -1391,15 +1422,17 @@
     const first = new Date(state.cursor.getFullYear(), state.cursor.getMonth(), 1);
     const start = startOfWeek(first);
     const cells = [];
+    const late = state.typeFilter.todo ? delayedTodoItems() : [];
     for (let i = 0; i < 42; i++) {
       const day = addDays(start, i);
       const muted = day.getMonth() !== state.cursor.getMonth() ? "muted" : "";
       const today = sameDay(day, new Date()) ? "is-today" : "";
       const selected = sameDay(day, state.selected) ? "is-selected" : "";
-      const evs = eventsOn(day);
-      const visible = evs.slice(0, 3).map((ev) => pillHtml(ev, day)).join("");
+      const evs = agendaEntries(day, late);
+      const visible = evs.slice(0, 3).map((entry) => pillHtml(entry.ev, entry.due, { overdue: entry.overdue })).join("");
       const extra = evs.length > 3 ? `<div class="more">+${evs.length - 3}개</div>` : "";
-      const dots = evs.slice(0, 4).map((ev) => {
+      const dots = evs.slice(0, 4).map((entry) => {
+        const ev = entry.ev;
         const m = memberById(ev.memberId);
         return `<i class="event-dot" style="background:${m.color}" title="${m.name}"></i>`;
       }).join("");
@@ -1443,10 +1476,13 @@
       </div>`;
     }).join("");
 
+    const late = state.typeFilter.todo ? delayedTodoItems() : [];
     const allDayRow = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(start, i);
-      const allDay = eventsOn(d).filter((ev) => getOccurrence(ev, d).allDay);
-      return `<div class="week-allday-cell" data-date="${ymd(d)}">${allDay.map((ev) => pillHtml(ev, d)).join("")}${stampPills(d)}</div>`;
+      const allDay = agendaEntries(d, late).filter(
+        (entry) => entry.overdue || getOccurrence(entry.ev, entry.due).allDay
+      );
+      return `<div class="week-allday-cell" data-date="${ymd(d)}">${allDay.map((entry) => pillHtml(entry.ev, entry.due, { overdue: entry.overdue })).join("")}${stampPills(d)}</div>`;
     }).join("");
 
     const gutter = hours
@@ -1485,13 +1521,13 @@
 
     const stack = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(start, i);
-      const items = eventsOn(d);
+      const items = agendaEntries(d, late);
       const stamps = stampsOn(d);
       const today = sameDay(d, new Date()) ? "is-today" : "";
       const selected = sameDay(d, state.selected) ? "is-selected" : "";
       const list =
         items.length || stamps.length
-          ? items.map((ev) => pillHtml(ev, d)).join("") + stampPills(d)
+          ? items.map((entry) => pillHtml(entry.ev, entry.due, { overdue: entry.overdue })).join("") + stampPills(d)
           : `<div class="more">일정 없음</div>`;
       return `<div class="week-day-card ${today} ${selected}" data-date="${ymd(d)}">
         <div class="week-day-title">${WEEKDAYS[d.getDay()]} ${d.getDate()}일</div>
@@ -1513,35 +1549,14 @@
 
   function renderDay() {
     const d = state.cursor;
-    const items = eventsOn(d);
+    const items = agendaEntries(d);
     const stamps = stampsOn(d);
     const w = state.weatherByDate[ymd(d)];
     const weatherLine = w ? `<p class="day-weather-line">${esc(w.text)}</p>` : "";
     if (!items.length && !stamps.length) {
       return `${weatherLine}<div class="day-list">${emptyState("이 날 등록된 일정·할 일·도장이 없습니다.")}</div>`;
     }
-    const rows = items
-      .map((ev) => {
-        const occ = getOccurrence(ev, d);
-        const m = memberById(occ.memberId);
-        const time = formatEventWhen(occ, ev);
-        const done = occ.kind === "todo" && isTodoDone(ev, d);
-        return `
-          <div class="item-row kind-${occ.kind}" style="--member:${m.color}">
-            <span class="item-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
-            ${
-              occ.kind === "todo"
-                ? `<input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />`
-                : `<span class="dot" style="background:${m.color};margin-top:6px"></span>`
-            }
-            <div class="item-body">
-              <strong>${occ.title}</strong>
-              <div class="meta">${m.name} · ${time}${isRecurring(ev) ? " · 반복" : ""}</div>
-            </div>
-            <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
-          </div>`;
-      })
-      .join("");
+    const rows = items.map((entry) => agendaRowHtml(entry.ev, entry.due, entry.overdue)).join("");
     const stampRows = stamps
       .map(
         (s) => `
@@ -1560,31 +1575,12 @@
   }
 
   function dayItemsHtml(d) {
-    const items = eventsOn(d);
+    const items = agendaEntries(d);
     const stamps = stampsOn(d);
     if (!items.length && !stamps.length) {
       return emptyState("아직 비어 있어요. 일정, 할 일, 용돈을 추가해 보세요.");
     }
-    const rows = items
-      .map((ev) => {
-        const occ = getOccurrence(ev, d);
-        const m = memberById(occ.memberId);
-        const done = occ.kind === "todo" && isTodoDone(ev, d);
-        return `<div class="item-row kind-${occ.kind}${done ? " is-done" : ""}" style="--member:${m.color}">
-          <span class="item-kind">${occ.kind === "todo" ? "할일" : "일정"}</span>
-          ${
-            occ.kind === "todo"
-              ? `<input type="checkbox" data-toggle-todo="${ev.id}" data-date="${ymd(d)}" ${done ? "checked" : ""} />`
-              : `<span class="dot" style="background:${m.color};margin-top:6px"></span>`
-          }
-          <div class="item-body">
-            <strong>${done ? "✓ " : occ.kind === "todo" ? "○ " : ""}${esc(occ.title)}</strong>
-            <div class="meta">${esc(m.name)} · ${formatEventWhen(occ, ev)}${isRecurring(ev) ? " · 반복" : ""}${isMultiDayEvent(ev) ? " · 기간" : ""}${done ? ` · ${completionLabel(ev, d)}` : ""}</div>
-          </div>
-          <button type="button" data-edit-event="${ev.id}" data-occurrence-date="${ymd(d)}">수정</button>
-        </div>`;
-      })
-      .join("");
+    const rows = items.map((entry) => agendaRowHtml(entry.ev, entry.due, entry.overdue)).join("");
     const stampRows = stamps
       .map(
         (s) => `<div class="item-row kind-stamp" style="--member:${memberById(s.memberId).color}">

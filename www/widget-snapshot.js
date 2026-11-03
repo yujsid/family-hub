@@ -47,29 +47,69 @@
     return false;
   }
 
-  function itemsOn(events, day) {
+  function itemFrom(ev, day) {
     const key = ymd(day);
-    return (events || [])
+    const override = (ev.overrides && ev.overrides[key]) || {};
+    const occ = { ...ev, ...override };
+    const allDay = Boolean(occ.allDay);
+    const due = parseYmd(key);
+    return {
+      memberId: occ.memberId || "",
+      kind: ev.kind === "todo" ? "todo" : "schedule",
+      title: occ.title || "(제목 없음)",
+      allDay,
+      time: allDay ? "" : String(occ.startTime || ""),
+      done: ev.kind === "todo" && Boolean(ev.doneDates && ev.doneDates[key]),
+      overdue: false,
+      due: "",
+      dueLabel: "",
+      _due: due,
+    };
+  }
+
+  function overdueItems(events, day) {
+    const list = events || [];
+    let scanEnd = addDays(day, -365);
+    list.forEach((ev) => {
+      if (!ev || ev.kind !== "todo" || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date || "")) return;
+      const start = parseYmd(ev.date);
+      if (start < day && start < scanEnd) scanEnd = start;
+    });
+    const items = [];
+    for (let d = addDays(day, -1); d >= scanEnd; d = addDays(d, -1)) {
+      list.forEach((ev) => {
+        if (!ev || ev.kind !== "todo" || !occursOn(ev, d)) return;
+        const key = ymd(d);
+        if (ev.doneDates && ev.doneDates[key]) return;
+        const item = itemFrom(ev, d);
+        item.allDay = true;
+        item.time = "";
+        item.done = false;
+        item.overdue = true;
+        item.due = key;
+        item.dueLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+        items.push(item);
+      });
+    }
+    items.sort((a, b) => a._due - b._due || String(a.title).localeCompare(String(b.title), "ko"));
+    return items;
+  }
+
+  function itemsOn(events, day) {
+    const own = (events || [])
       .filter((ev) => ev && (ev.kind === "schedule" || ev.kind === "todo") && occursOn(ev, day))
-      .map((ev) => {
-        const override = (ev.overrides && ev.overrides[key]) || {};
-        const occ = { ...ev, ...override };
-        const allDay = Boolean(occ.allDay);
-        return {
-          memberId: occ.memberId || "",
-          kind: ev.kind === "todo" ? "todo" : "schedule",
-          title: occ.title || "(제목 없음)",
-          allDay,
-          time: allDay ? "" : String(occ.startTime || ""),
-          done: ev.kind === "todo" && Boolean(ev.doneDates && ev.doneDates[key]),
-        };
-      })
+      .map((ev) => itemFrom(ev, day))
       .sort((a, b) => {
         if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
         if (a.time !== b.time) return a.time < b.time ? -1 : 1;
         if (a.kind !== b.kind) return a.kind === "schedule" ? -1 : 1;
         return String(a.title).localeCompare(String(b.title), "ko");
       });
+    return overdueItems(events, day).concat(own).map((item) => {
+      const copy = { ...item };
+      delete copy._due;
+      return copy;
+    });
   }
 
   function build(events, today) {

@@ -23,13 +23,15 @@ public final class WidgetStore {
         public final String time;
         public final boolean allDay;
         public final boolean done;
+        public final String dueLabel;
 
-        Item(String kind, String title, String time, boolean allDay, boolean done) {
+        Item(String kind, String title, String time, boolean allDay, boolean done, String dueLabel) {
             this.kind = kind;
             this.title = title;
             this.time = time;
             this.allDay = allDay;
             this.done = done;
+            this.dueLabel = dueLabel == null ? "" : dueLabel;
         }
     }
 
@@ -119,7 +121,8 @@ public final class WidgetStore {
                     row.optString("title", "(제목 없음)"),
                     row.optString("time", ""),
                     row.optBoolean("allDay"),
-                    row.optBoolean("done")
+                    row.optBoolean("done"),
+                    row.optBoolean("overdue") ? row.optString("dueLabel", "") : ""
                 ));
             }
             return new DayList(true, items);
