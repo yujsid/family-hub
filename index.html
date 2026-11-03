@@ -7,9 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="채소가족" />
-  <meta name="application-name" content="채소가족" />
-  <title>채소가족</title>
+  <meta name="apple-mobile-web-app-title" content="채소가족허브" />
+  <meta name="application-name" content="채소가족허브" />
+  <title>채소가족허브</title>
   <script>
     try {
       if (sessionStorage.getItem("family-hub-started")) document.documentElement.classList.add("started");
@@ -19,16 +19,16 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Jua&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icons/icon-192.png?v=66" type="image/png" />
-  <link rel="apple-touch-icon" href="icons/icon-512.png?v=66" />
-  <link rel="stylesheet" href="styles.css?v=66" />
-  <link rel="stylesheet" href="theme-veggie.css?v=66" />
+  <link rel="icon" href="icons/icon-192.png?v=67" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/icon-512.png?v=67" />
+  <link rel="stylesheet" href="styles.css?v=67" />
+  <link rel="stylesheet" href="theme-veggie.css?v=67" />
 </head>
 <body>
   <div id="splash" class="splash">
     <div class="splash-top">
       <svg class="leaf-logo splash-leaf" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9.5"/><path class="leaf-fill" d="M12 13.5C12 9 8.6 6 3.5 6c0 4.7 3.4 7.5 8.5 7.5Z"/><path class="leaf-fill" d="M12 11c0-4.2 3.2-7.4 8.5-7.4 0 4.9-3.4 7.4-8.5 7.4Z"/></svg>
-      <h1 class="veggie-wordmark splash-title"><span class="wm-green">채소가족</span></h1>
+      <h1 class="veggie-wordmark splash-title"><span class="wm-green">채소가족</span><span class="wm-orange">허브</span></h1>
       <p class="splash-copy">다른 듯 닮은 우리,<br />채소처럼 다채로운 가족 이야기</p>
     </div>
     <button id="splash-start" class="splash-start" type="button">시작하기 <span aria-hidden="true">→</span></button>
@@ -40,7 +40,7 @@
       <div class="drawer-head">
         <span class="brand-logo">
           <svg class="leaf-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9.5"/><path class="leaf-fill" d="M12 13.5C12 9 8.6 6 3.5 6c0 4.7 3.4 7.5 8.5 7.5Z"/><path class="leaf-fill" d="M12 11c0-4.2 3.2-7.4 8.5-7.4 0 4.9-3.4 7.4-8.5 7.4Z"/></svg>
-          <span class="veggie-wordmark"><span class="wm-green">채소가족</span></span>
+          <span class="veggie-wordmark"><span class="wm-green">채소가족</span><span class="wm-orange">허브</span></span>
         </span>
         <button type="button" class="icon-btn" data-drawer-close aria-label="메뉴 닫기">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
@@ -58,7 +58,7 @@
     <header class="topbar">
       <div class="brand" data-go-tab="home" role="link" tabindex="0" aria-label="홈으로">
         <svg class="leaf-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9.5"/><path class="leaf-fill" d="M12 13.5C12 9 8.6 6 3.5 6c0 4.7 3.4 7.5 8.5 7.5Z"/><path class="leaf-fill" d="M12 11c0-4.2 3.2-7.4 8.5-7.4 0 4.9-3.4 7.4-8.5 7.4Z"/></svg>
-        <h1 class="brand-title veggie-wordmark"><span class="wm-green">채소가족</span></h1>
+        <h1 class="brand-title veggie-wordmark"><span class="wm-green">채소가족</span><span class="wm-orange">허브</span></h1>
       </div>
       <nav class="tabs" role="tablist"></nav>
       <button type="button" class="icon-btn menu-btn" data-drawer-open aria-label="메뉴 열기">
@@ -276,9 +276,9 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=66"></script>
-  <script src="gcal.js?v=66"></script>
-  <script src="widget-snapshot.js?v=66"></script>
-  <script src="app.js?v=66"></script>
+  <script src="firebase-config.js?v=67"></script>
+  <script src="gcal.js?v=67"></script>
+  <script src="widget-snapshot.js?v=67"></script>
+  <script src="app.js?v=67"></script>
 </body>
 </html>

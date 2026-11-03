@@ -71,7 +71,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-v${{ github.run_number }}
-          name: 채소가족 APK v${{ github.run_number }}
+          name: 가족허브 APK v${{ github.run_number }}
           body: |
             Android 설치 파일입니다.
             다운로드 후 파일 관리자에서 열어 설치하세요.
