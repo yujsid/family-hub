@@ -9,6 +9,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TodayWidgetService extends RemoteViewsService {
+    static String clock12(String raw) {
+        if (raw == null) return "";
+        String[] parts = raw.trim().split(":", -1);
+        if (parts.length != 2) return raw;
+        try {
+            int hour = Integer.parseInt(parts[0]);
+            int minute = Integer.parseInt(parts[1]);
+            if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return raw;
+            String period = hour < 12 ? "오전" : "오후";
+            int hour12 = hour % 12;
+            if (hour12 == 0) hour12 = 12;
+            return period + " " + hour12 + ":" + String.format(java.util.Locale.US, "%02d", minute);
+        } catch (NumberFormatException ex) {
+            return raw;
+        }
+    }
+
     @Override
     public RemoteViewsFactory onGetViewFactory(Intent intent) {
         return new Factory(getApplicationContext(), intent.getIntExtra(
@@ -76,7 +93,7 @@ public class TodayWidgetService extends RemoteViewsService {
             if (item.done) meta = "완료";
             else if (item.dueLabel != null && !item.dueLabel.isEmpty()) meta = item.dueLabel + " 지연";
             else if (item.allDay || item.time.isEmpty()) meta = todo ? "" : "하루 종일";
-            else meta = item.time;
+            else meta = clock12(item.time);
             if (item.shared) meta = meta.isEmpty() ? "공통" : "공통 · " + meta;
             views.setTextViewText(R.id.widget_row_meta, meta);
             views.setOnClickFillInIntent(R.id.widget_row_root, new Intent());
