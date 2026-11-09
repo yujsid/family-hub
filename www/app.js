@@ -2243,11 +2243,11 @@
     const list = (Array.isArray(images) ? images : []).filter((img) => img && (img.url || img.id));
     if (!list.length) return "";
     return `<div class="talk-photos">${list
-      .map((img) =>
-        img.url
-          ? `<a href="${esc(img.url)}" target="_blank" rel="noopener"><img src="${esc(img.url)}" alt="올린 사진" /></a>`
-          : `<a><img data-talk-image="${esc(img.id)}" alt="올린 사진" /></a>`
-      )
+      .map((img) => {
+        const attrs = img.url ? `data-talk-url="${esc(img.url)}"` : `data-talk-image="${esc(img.id)}"`;
+        const src = img.url ? ` src="${esc(img.url)}"` : "";
+        return `<button type="button" class="talk-photo-open" ${attrs} aria-label="사진 크게 보기"><img${src} alt="올린 사진" /></button>`;
+      })
       .join("")}</div>`;
   }
 
@@ -2263,23 +2263,68 @@
 
   function hydrateTalkImages(root) {
     if (!root) return;
-    root.querySelectorAll("img[data-talk-image]").forEach((el) => {
-      const id = el.dataset.talkImage;
-      const link = el.closest("a");
-      loadTalkImageUrl(id)
+    root.querySelectorAll("[data-talk-image]").forEach((el) => {
+      const img = el.tagName === "IMG" ? el : el.querySelector("img");
+      if (!img) return;
+      loadTalkImageUrl(el.dataset.talkImage)
         .then((url) => {
-          if (!el.isConnected) return;
-          el.src = url;
-          if (link) {
-            link.href = url;
-            link.target = "_blank";
-            link.rel = "noopener";
-          }
+          if (!img.isConnected) return;
+          img.src = url;
         })
         .catch(() => {
-          el.alt = "사진을 불러오지 못했어요";
+          img.alt = "사진을 불러오지 못했어요";
         });
     });
+  }
+
+  async function openTalkPhoto(button) {
+    let url = button.dataset.talkUrl || "";
+    if (button.dataset.talkImage) {
+      try {
+        url = await loadTalkImageUrl(button.dataset.talkImage);
+      } catch (_) {
+        toast("사진을 불러오지 못했어요.");
+        return;
+      }
+      const thumb = button.querySelector("img");
+      if (thumb) thumb.src = url;
+    }
+    if (!url) return;
+    const viewer = $("#photo-viewer");
+    const photo = $("#photo-viewer-img");
+    if (!viewer || !photo) return;
+    photo.src = url;
+    viewer.dataset.url = url;
+    viewer.hidden = false;
+  }
+
+  function closeTalkPhoto() {
+    const viewer = $("#photo-viewer");
+    if (!viewer || viewer.hidden) return;
+    viewer.hidden = true;
+    viewer.dataset.url = "";
+    const photo = $("#photo-viewer-img");
+    if (photo) photo.removeAttribute("src");
+  }
+
+  async function downloadTalkPhoto() {
+    const url = $("#photo-viewer")?.dataset.url;
+    if (!url) return;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("download");
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "채소가족-사진.jpg";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+    } catch (_) {
+      toast("사진을 저장하지 못했어요.");
+    }
   }
 
   function canvasJpeg(canvas, quality) {
@@ -6166,6 +6211,19 @@
     });
 
     document.body.addEventListener("click", async (e) => {
+      const photoOpen = e.target.closest(".talk-photo-open");
+      if (photoOpen) {
+        await openTalkPhoto(photoOpen);
+        return;
+      }
+      if (e.target.id === "photo-viewer-download") {
+        await downloadTalkPhoto();
+        return;
+      }
+      if (e.target.id === "photo-viewer-close") {
+        closeTalkPhoto();
+        return;
+      }
       const cell = e.target.closest("#calendar-root [data-date], .week-day-card[data-date], .day-cell[data-date]");
       if (cell && !e.target.closest("button") && !e.target.closest("input") && !e.target.closest(".todo-day")) {
         state.selected = parseYmd(cell.dataset.date);
@@ -6461,6 +6519,11 @@
     });
 
     document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && $("#photo-viewer") && !$("#photo-viewer").hidden) {
+        e.preventDefault();
+        closeTalkPhoto();
+        return;
+      }
       if (!state.pinResolve) return;
       if (e.target && (e.target.tagName === "TEXTAREA" || (e.target.tagName === "INPUT" && e.target.id !== "pin-input"))) {
         return;

@@ -985,11 +985,16 @@ button.primary {
   gap: 8px;
   margin-top: 10px;
 }
-.talk-photos a,
+.talk-photo-open,
 .talk-photo-preview img {
   display: block;
   border-radius: 14px;
   overflow: hidden;
+}
+.talk-photo-open {
+  padding: 0;
+  width: 100%;
+  cursor: zoom-in;
 }
 .talk-photos img,
 .talk-photo-preview img {
@@ -999,6 +1004,42 @@ button.primary {
   background: #f4efe4;
 }
 .talk-photo-preview p { margin: 0; }
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: calc(16px + var(--status-bar-top, env(safe-area-inset-top, 0px))) 16px calc(16px + env(safe-area-inset-bottom));
+}
+.photo-viewer:not([hidden]) { display: grid; }
+.photo-viewer-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(28, 22, 16, 0.88);
+}
+.photo-viewer img {
+  position: relative;
+  z-index: 1;
+  justify-self: center;
+  align-self: center;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 16px;
+  background: #1c1610;
+}
+.photo-viewer-download {
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+}
 .talk-comments {
   margin-top: 14px;
   padding-top: 12px;
