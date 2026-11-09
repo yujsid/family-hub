@@ -978,6 +978,27 @@ button.primary {
   line-height: 1.55;
   font-size: 15px;
 }
+.talk-photos,
+.talk-photo-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.talk-photos a,
+.talk-photo-preview img {
+  display: block;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.talk-photos img,
+.talk-photo-preview img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  background: #f4efe4;
+}
+.talk-photo-preview p { margin: 0; }
 .talk-comments {
   margin-top: 14px;
   padding-top: 12px;

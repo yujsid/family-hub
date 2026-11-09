@@ -1250,6 +1250,10 @@
   }
 
   function closeModal() {
+    const form = document.getElementById("post-form");
+    (form?._talkPhotos || []).forEach((photo) => {
+      if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
+    });
     $("#modal-backdrop").hidden = true;
     $("#modal").innerHTML = "";
     state.pinBuffer = "";
@@ -2207,7 +2211,8 @@
             <button class="ghost tiny" type="button" data-del-post="${esc(post.id)}">삭제</button>
           </header>
           ${title}
-          <p class="talk-body">${richText(post.body)}</p>
+          ${post.body ? `<p class="talk-body">${richText(post.body)}</p>` : ""}
+          ${talkPhotosHtml(post.images)}
           <div class="talk-comments">
             <p class="talk-comments-label">댓글 ${comments.length + (post.askGemini && post.geminiStatus !== "done" ? 1 : 0)}</p>
             ${commentHtml}
@@ -2224,6 +2229,159 @@
       .join("");
   }
 
+  const TALK_IMAGE_LIMIT = 4;
+  const TALK_IMAGE_EDGE = 1600;
+  const TALK_IMAGE_MAX_BYTES = 750 * 1024;
+
+  function talkPhotosHtml(images) {
+    const list = (Array.isArray(images) ? images : []).filter((img) => img && img.url);
+    if (!list.length) return "";
+    return `<div class="talk-photos">${list
+      .map(
+        (img) =>
+          `<a href="${esc(img.url)}" target="_blank" rel="noopener"><img src="${esc(img.url)}" alt="올린 사진" /></a>`
+      )
+      .join("")}</div>`;
+  }
+
+  function canvasJpeg(canvas, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("사진으로 만들지 못했어요."))), "image/jpeg", quality);
+    });
+  }
+
+  async function compressTalkImage(file) {
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    } catch (_) {
+      bitmap = await createImageBitmap(file);
+    }
+    let width = bitmap.width;
+    let height = bitmap.height;
+    const edge = Math.max(width, height);
+    if (edge > TALK_IMAGE_EDGE) {
+      const scale = TALK_IMAGE_EDGE / edge;
+      width = Math.max(1, Math.round(width * scale));
+      height = Math.max(1, Math.round(height * scale));
+    }
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    let quality = 0.82;
+    let blob = null;
+    for (let pass = 0; pass < 6; pass++) {
+      canvas.width = width;
+      canvas.height = height;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      blob = await canvasJpeg(canvas, quality);
+      if (blob.size <= TALK_IMAGE_MAX_BYTES) break;
+      if (quality > 0.5) quality = Math.round((quality - 0.12) * 100) / 100;
+      else {
+        width = Math.max(1, Math.round(width * 0.75));
+        height = Math.max(1, Math.round(height * 0.75));
+        quality = 0.72;
+      }
+    }
+    if (bitmap.close) bitmap.close();
+    return { blob, width: canvas.width, height: canvas.height };
+  }
+
+  function renderTalkPhotoPreview(form) {
+    const box = document.getElementById("talk-photo-preview");
+    if (!box) return;
+    const photos = form?._talkPhotos || [];
+    if (!photos.length) {
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = photos.map((photo) => `<img src="${esc(photo.previewUrl)}" alt="올릴 사진 미리보기" />`).join("");
+  }
+
+  async function queueTalkPhotos(input) {
+    const form = input.closest("#post-form");
+    if (!form) return;
+    const token = (form._talkPhotoToken || 0) + 1;
+    form._talkPhotoToken = token;
+    form.dataset.compressing = "1";
+    const files = [...(input.files || [])].filter(
+      (file) => /^image\//.test(file.type) || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name)
+    );
+    const chosen = files.slice(0, TALK_IMAGE_LIMIT);
+    if (files.length > TALK_IMAGE_LIMIT) toast("사진은 4장까지 올릴 수 있어요.");
+    const box = document.getElementById("talk-photo-preview");
+    if (box) box.innerHTML = `<p class="hint">사진을 줄이는 중이에요.</p>`;
+    const next = [];
+    for (const file of chosen) {
+      try {
+        const compressed = await compressTalkImage(file);
+        compressed.previewUrl = URL.createObjectURL(compressed.blob);
+        next.push(compressed);
+      } catch (_) {
+        toast("한 장을 읽지 못했어요. JPG나 PNG로 골라 주세요.");
+      }
+    }
+    if (form._talkPhotoToken !== token) {
+      next.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      return;
+    }
+    (form._talkPhotos || []).forEach((photo) => {
+      if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
+    });
+    form._talkPhotos = next;
+    form.dataset.compressing = "";
+    renderTalkPhotoPreview(form);
+  }
+
+  async function uploadTalkImages(postId, photos) {
+    if (typeof firebase === "undefined" || !firebase.storage) throw new Error("storage");
+    const familyId = String(window.FAMILY_HUB_DOC || DEFAULT_DOC).split("/")[1] || "yu-family";
+    const storage = firebase.storage();
+    const images = [];
+    try {
+      for (const photo of photos) {
+        const id = uid();
+        const path = `families/${familyId}/talk/${postId}/${id}.jpg`;
+        const ref = storage.ref(path);
+        await ref.put(photo.blob, { contentType: "image/jpeg", cacheControl: "public,max-age=31536000" });
+        images.push({ url: await ref.getDownloadURL(), path, width: photo.width, height: photo.height });
+      }
+      return images;
+    } catch (err) {
+      await deleteTalkImageFiles(images);
+      throw err;
+    }
+  }
+
+  async function deleteTalkImageFiles(images) {
+    if (typeof firebase === "undefined" || !firebase.storage || !Array.isArray(images)) return;
+    await Promise.all(
+      images.map(async (img) => {
+        if (!img?.path) return;
+        try {
+          await firebase.storage().ref(img.path).delete();
+        } catch (_) {
+          /* 이미 없는 파일은 넘어갑니다. */
+        }
+      })
+    );
+  }
+
+  async function talkImageInline(img) {
+    const res = await fetch(img.url);
+    if (!res.ok) throw new Error("image");
+    const blob = await res.blob();
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    if (!data) throw new Error("image");
+    return { inlineData: { mimeType: blob.type || "image/jpeg", data } };
+  }
+
   function postForm(askGemini) {
     openModal(`
       <h3>${askGemini ? "AI에게 물어보기" : "글 쓰기"}</h3>
@@ -2232,9 +2390,14 @@
           <select name="memberId">${memberSelectOptions(getPreferredMemberId())}</select>
         </label>
         <label>${askGemini ? "질문" : "내용"}
-          <textarea name="body" rows="5" required maxlength="2000" placeholder="${askGemini ? "예: 오늘 날씨 어때?" : "가족에게 전할 말을 적어 주세요."}"></textarea>
+          <textarea name="body" rows="5" maxlength="2000" placeholder="${askGemini ? "예: 이 사진 속 식물이 뭐야?" : "가족에게 전할 말을 적어 주세요."}"></textarea>
         </label>
-        ${askGemini ? `<p class="hint">올리면 Gemini가 이 글의 댓글로 답해요. 날씨를 물으면 일정에 있는 가족 지역 예보를 참고해요.</p>` : ""}
+        <label>사진
+          <input name="photos" type="file" accept="image/*" multiple />
+        </label>
+        <div id="talk-photo-preview" class="talk-photo-preview"></div>
+        <p class="hint">사진은 올리기 전에 자동으로 줄여요. 한 번에 4장까지.</p>
+        ${askGemini ? `<p class="hint">올리면 Gemini가 글과 사진을 보고 댓글로 답해요. 날씨를 물으면 일정에 있는 가족 지역 예보를 참고해요.</p>` : ""}
         <div class="modal-actions">
           <button type="button" id="cancel-modal">취소</button>
           <button class="primary" type="button" id="save-post">${askGemini ? "물어보기" : "올리기"}</button>
@@ -2243,18 +2406,36 @@
     `);
   }
 
-  function savePostFromForm(form) {
+  async function savePostFromForm(form) {
+    if (form.dataset.saving === "1") return;
+    if (form.dataset.compressing === "1") return toast("사진을 줄이는 중이에요. 잠시만 기다려 주세요.");
     const fd = new FormData(form);
-    const body = String(fd.get("body") || "").trim();
-    if (!body) return toast("내용을 입력해 주세요.");
-    const memberId = fd.get("memberId") || getPreferredMemberId();
+    let body = String(fd.get("body") || "").trim();
+    const photos = Array.isArray(form._talkPhotos) ? form._talkPhotos : [];
     const askGemini = form.dataset.askGemini === "1";
+    if (!body && !photos.length) return toast(askGemini ? "질문이나 사진을 넣어 주세요." : "내용이나 사진을 넣어 주세요.");
+    if (!body && askGemini) body = "이 사진을 보고 알려 줘.";
+    const memberId = fd.get("memberId") || getPreferredMemberId();
     setPreferredMemberId(memberId);
+    const button = document.getElementById("save-post");
+    form.dataset.saving = "1";
+    if (button) button.disabled = true;
+    const postId = uid();
+    let images = [];
+    try {
+      if (photos.length) images = await uploadTalkImages(postId, photos);
+    } catch (_) {
+      form.dataset.saving = "";
+      if (button) button.disabled = false;
+      toast("사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
     const post = {
-      id: uid(),
+      id: postId,
       memberId,
       title: "",
       body,
+      images,
       createdAt: new Date().toISOString(),
       comments: [],
       askGemini,
@@ -2329,7 +2510,7 @@
         return aiMod.getGenerativeModel(ai, {
           model: "gemini-3.5-flash",
           systemInstruction:
-            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 실버(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 처음 질문과 이어진 댓글을 모두 읽고, 마지막 가족 말에 답해. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
+            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 실버(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 처음 질문과 이어진 댓글을 모두 읽고, 마지막 가족 말에 답해. 사진이 함께 오면 그 사진을 직접 보고 답해. 사진에 보이지 않는 사실은 만들지 마. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
           generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
         });
       })().catch((err) => {
@@ -2340,11 +2521,16 @@
     return geminiModelPromise;
   }
 
-  async function generateGeminiText(model, prompt) {
+  async function generateGeminiText(model, prompt, images) {
+    const parts = [{ text: prompt }];
+    for (const img of Array.isArray(images) ? images : []) {
+      if (img && img.url) parts.push(await talkImageInline(img));
+    }
+    const payload = parts.length > 1 ? parts : prompt;
     let lastErr = new Error("empty");
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(payload);
         const text = String(result?.response?.text?.() || "").trim();
         if (text) return text;
         lastErr = new Error("empty");
@@ -2390,7 +2576,8 @@
       `오늘 날짜: ${ymd(new Date())}`,
       weatherBriefForGemini(),
       "",
-      `처음 질문 (${author?.name || "가족"}, ${author?.role || ""}): ${post.body}`,
+      `처음 질문 (${author?.name || "가족"}, ${author?.role || ""}): ${post.body || "(글 없이 사진만)"}`,
+      Array.isArray(post.images) && post.images.length ? `첨부 사진: ${post.images.length}장` : "",
     ];
     (post.comments || []).forEach((c) => {
       if (c.memberId === "gemini") lines.push(`Gemini: ${c.body}`);
@@ -2491,7 +2678,7 @@
       const freshForPrompt = state.posts.find((p) => p.id === postId) || post;
       const includedComments = (freshForPrompt.comments || []).length;
       const model = await geminiModel();
-      let text = await generateGeminiText(model, geminiThreadPrompt(freshForPrompt));
+      let text = await generateGeminiText(model, geminiThreadPrompt(freshForPrompt), freshForPrompt.images);
       if (GEMINI_KID_IDS.has(geminiAskerId(freshForPrompt))) {
         text = stripGeminiLinks(text);
         if (!text) throw new Error("empty");
@@ -5891,6 +6078,9 @@
     });
 
     document.body.addEventListener("change", (e) => {
+      if (e.target.name === "photos" && e.target.closest("#post-form")) {
+        queueTalkPhotos(e.target);
+      }
       if (e.target.name === "charLook" && e.target.closest("#intro-settings-form")) {
         const next = e.target.value === "classic" ? "classic" : "styled";
         if (state.charLook !== next) {
@@ -5960,7 +6150,7 @@
       }
       if (e.target.id === "save-post") {
         const form = document.getElementById("post-form");
-        if (form) savePostFromForm(form);
+        if (form) await savePostFromForm(form);
       }
       const geminiRetry = e.target.closest("[data-gemini-retry]");
       if (geminiRetry) replyAsGemini(geminiRetry.dataset.geminiRetry);
@@ -6176,10 +6366,12 @@
       if (delPost) {
         const ok = await askPin("삭제 확인");
         if (!ok) return;
+        const removed = state.posts.find((p) => p.id === delPost.dataset.delPost);
         state.posts = state.posts.filter((p) => p.id !== delPost.dataset.delPost);
         save();
         render();
         toast("글을 삭제했습니다.");
+        deleteTalkImageFiles(removed?.images);
         return;
       }
       const delComment = e.target.closest("[data-del-comment]");
@@ -6352,7 +6544,7 @@
         saveStampFromForm(e.target);
       }
       if (formId === "post-form") {
-        savePostFromForm(e.target);
+        await savePostFromForm(e.target);
       }
       if (formId === "pet-weight-form") savePetWeightFromForm(e.target);
       if (formId === "intro-settings-form") saveIntroSettings();
