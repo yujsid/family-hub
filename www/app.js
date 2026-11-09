@@ -2730,15 +2730,19 @@
   function geminiModel() {
     if (!geminiModelPromise) {
       geminiModelPromise = (async () => {
-        const appMod = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js");
-        const aiMod = await import("https://www.gstatic.com/firebasejs/12.6.0/firebase-ai.js");
+        const appMod = await import("https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js");
+        const aiMod = await import("https://www.gstatic.com/firebasejs/12.11.0/firebase-ai.js");
         const firebaseApp = appMod.initializeApp(window.FAMILY_HUB_FIREBASE, "family-hub-ai");
         const ai = aiMod.getAI(firebaseApp, { backend: new aiMod.GoogleAIBackend() });
         return aiMod.getGenerativeModel(ai, {
           model: "gemini-3.5-flash",
           systemInstruction:
-            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 실버(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 처음 질문과 이어진 댓글을 모두 읽고, 마지막 가족 말에 답해. 사진이 함께 오면 그 사진을 직접 보고 답해. 사진에 보이지 않는 사실은 만들지 마. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해.",
-          generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
+            "너는 채소가족허브 대화방에 댓글로 답하는 Gemini야. 가족은 유재상(아빠), 윤신정(엄마), 유수아(딸), 유수민(아들)이고, 반려동물은 피넛(크레스티드 게코)과 실버(실버 토이푸들)이야. 한국어로 다정하고 짧게 답해. 댓글이니 몇 문단을 넘기지 마. 처음 질문과 이어진 댓글을 모두 읽고, 마지막 가족 말에 답해. 사진이 함께 오면 그 사진을 직접 보고 답해. 사진에 보이지 않는 사실은 만들지 마. 날씨를 물으면 메시지에 적힌 예보만 사용하고, 예보에 없는 수치나 날짜는 만들지 마. 예보가 없으면 아직 이 기기의 예보를 모른다고 말해. 답은 문장을 끝까지 마무리해.",
+          generationConfig: {
+            maxOutputTokens: 4096,
+            temperature: 0.7,
+            thinkingConfig: { thinkingLevel: aiMod.ThinkingLevel.LOW },
+          },
         });
       })().catch((err) => {
         geminiModelPromise = null;
