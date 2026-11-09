@@ -2227,21 +2227,59 @@
         </article>`;
       })
       .join("");
+    hydrateTalkImages(feed);
   }
 
   const TALK_IMAGE_LIMIT = 4;
   const TALK_IMAGE_EDGE = 1600;
-  const TALK_IMAGE_MAX_BYTES = 750 * 1024;
+  const TALK_IMAGE_MAX_BYTES = 600 * 1024;
+  const talkImageUrls = new Map();
+
+  function talkImageDoc(id) {
+    return firebase.firestore().doc(`${window.FAMILY_HUB_DOC || DEFAULT_DOC}/talkImages/${id}`);
+  }
 
   function talkPhotosHtml(images) {
-    const list = (Array.isArray(images) ? images : []).filter((img) => img && img.url);
+    const list = (Array.isArray(images) ? images : []).filter((img) => img && (img.url || img.id));
     if (!list.length) return "";
     return `<div class="talk-photos">${list
-      .map(
-        (img) =>
-          `<a href="${esc(img.url)}" target="_blank" rel="noopener"><img src="${esc(img.url)}" alt="올린 사진" /></a>`
+      .map((img) =>
+        img.url
+          ? `<a href="${esc(img.url)}" target="_blank" rel="noopener"><img src="${esc(img.url)}" alt="올린 사진" /></a>`
+          : `<a><img data-talk-image="${esc(img.id)}" alt="올린 사진" /></a>`
       )
       .join("")}</div>`;
+  }
+
+  async function loadTalkImageUrl(id) {
+    if (talkImageUrls.has(id)) return talkImageUrls.get(id);
+    const snap = await talkImageDoc(id).get();
+    const field = snap.data()?.data;
+    if (!field || !field.toUint8Array) throw new Error("image");
+    const url = URL.createObjectURL(new Blob([field.toUint8Array()], { type: snap.data().contentType || "image/jpeg" }));
+    talkImageUrls.set(id, url);
+    return url;
+  }
+
+  function hydrateTalkImages(root) {
+    if (!root) return;
+    root.querySelectorAll("img[data-talk-image]").forEach((el) => {
+      const id = el.dataset.talkImage;
+      const link = el.closest("a");
+      loadTalkImageUrl(id)
+        .then((url) => {
+          if (!el.isConnected) return;
+          el.src = url;
+          if (link) {
+            link.href = url;
+            link.target = "_blank";
+            link.rel = "noopener";
+          }
+        })
+        .catch(() => {
+          el.alt = "사진을 불러오지 못했어요";
+        });
+    });
   }
 
   function canvasJpeg(canvas, quality) {
@@ -2281,10 +2319,11 @@
       else {
         width = Math.max(1, Math.round(width * 0.75));
         height = Math.max(1, Math.round(height * 0.75));
-        quality = 0.72;
+        quality = 0.7;
       }
     }
     if (bitmap.close) bitmap.close();
+    if (!blob || blob.size > TALK_IMAGE_MAX_BYTES) throw new Error("too big");
     return { blob, width: canvas.width, height: canvas.height };
   }
 
@@ -2335,17 +2374,21 @@
   }
 
   async function uploadTalkImages(postId, photos) {
-    if (typeof firebase === "undefined" || !firebase.storage) throw new Error("storage");
-    const familyId = String(window.FAMILY_HUB_DOC || DEFAULT_DOC).split("/")[1] || "yu-family";
-    const storage = firebase.storage();
+    if (typeof firebase === "undefined" || !firebase.firestore) throw new Error("firestore");
     const images = [];
     try {
       for (const photo of photos) {
         const id = uid();
-        const path = `families/${familyId}/talk/${postId}/${id}.jpg`;
-        const ref = storage.ref(path);
-        await ref.put(photo.blob, { contentType: "image/jpeg", cacheControl: "public,max-age=31536000" });
-        images.push({ url: await ref.getDownloadURL(), path, width: photo.width, height: photo.height });
+        const bytes = new Uint8Array(await photo.blob.arrayBuffer());
+        await talkImageDoc(id).set({
+          postId,
+          width: photo.width,
+          height: photo.height,
+          contentType: "image/jpeg",
+          data: firebase.firestore.Blob.fromUint8Array(bytes),
+        });
+        talkImageUrls.set(id, URL.createObjectURL(photo.blob));
+        images.push({ id, width: photo.width, height: photo.height });
       }
       return images;
     } catch (err) {
@@ -2355,23 +2398,42 @@
   }
 
   async function deleteTalkImageFiles(images) {
-    if (typeof firebase === "undefined" || !firebase.storage || !Array.isArray(images)) return;
+    if (!Array.isArray(images)) return;
     await Promise.all(
       images.map(async (img) => {
-        if (!img?.path) return;
-        try {
-          await firebase.storage().ref(img.path).delete();
-        } catch (_) {
-          /* 이미 없는 파일은 넘어갑니다. */
+        if (img?.id && typeof firebase !== "undefined" && firebase.firestore) {
+          const cached = talkImageUrls.get(img.id);
+          if (cached) URL.revokeObjectURL(cached);
+          talkImageUrls.delete(img.id);
+          try {
+            await talkImageDoc(img.id).delete();
+          } catch (_) {
+            /* 이미 없는 사진은 넘어갑니다. */
+          }
+        }
+        if (img?.path && typeof firebase !== "undefined" && firebase.storage) {
+          try {
+            await firebase.storage().ref(img.path).delete();
+          } catch (_) {
+            /* 이미 없는 파일은 넘어갑니다. */
+          }
         }
       })
     );
   }
 
   async function talkImageInline(img) {
-    const res = await fetch(img.url);
-    if (!res.ok) throw new Error("image");
-    const blob = await res.blob();
+    let blob;
+    if (img.url) {
+      const res = await fetch(img.url);
+      if (!res.ok) throw new Error("image");
+      blob = await res.blob();
+    } else {
+      const snap = await talkImageDoc(img.id).get();
+      const field = snap.data()?.data;
+      if (!field || !field.toUint8Array) throw new Error("image");
+      blob = new Blob([field.toUint8Array()], { type: snap.data().contentType || "image/jpeg" });
+    }
     const data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");

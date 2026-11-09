@@ -5,6 +5,9 @@ service cloud.firestore {
     // 공개 서비스라면 Firebase Authentication을 추가해 더 강화하세요.
     match /families/{familyId} {
       allow read, write: if true;
+      match /talkImages/{imageId} {
+        allow read, write: if true;
+      }
     }
   }
 }
