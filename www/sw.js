@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v72";
+const CACHE = "family-hub-v73";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,6 +10,8 @@ const ASSETS = [
   "./img/home-portrait-styled.jpg",
   "./img/home-wide-styled.jpg",
   "./app.js",
+  "./gif-encode.js",
+  "./gifenc.esm.js",
   "./gcal.js",
   "./widget-snapshot.js",
   "./firebase-config.js",
@@ -53,6 +55,8 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/") ||
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.js") ||
+    url.pathname.endsWith("/gif-encode.js") ||
+    url.pathname.endsWith("/gifenc.esm.js") ||
     url.pathname.endsWith("/styles.css") ||
     url.pathname.endsWith("/theme-veggie.css") ||
     url.pathname.endsWith("/firebase-config.js") ||

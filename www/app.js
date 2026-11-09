@@ -2233,6 +2233,7 @@
   const TALK_IMAGE_LIMIT = 4;
   const TALK_IMAGE_EDGE = 1600;
   const TALK_IMAGE_MAX_BYTES = 600 * 1024;
+  const TALK_GIF_MAX_BYTES = 800 * 1024;
   const talkImageUrls = new Map();
 
   function talkImageDoc(id) {
@@ -2317,7 +2318,7 @@
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
-      link.download = "채소가족-사진.jpg";
+      link.download = `채소가족-사진.${/gif/i.test(blob.type) ? "gif" : "jpg"}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -2325,6 +2326,19 @@
     } catch (_) {
       toast("사진을 저장하지 못했어요.");
     }
+  }
+
+  async function talkGifStill(blob) {
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0);
+    if (bitmap.close) bitmap.close();
+    return canvasJpeg(canvas, 0.8);
   }
 
   function canvasJpeg(canvas, quality) {
@@ -2369,7 +2383,108 @@
     }
     if (bitmap.close) bitmap.close();
     if (!blob || blob.size > TALK_IMAGE_MAX_BYTES) throw new Error("too big");
-    return { blob, width: canvas.width, height: canvas.height };
+    return { blob, width: canvas.width, height: canvas.height, contentType: "image/jpeg" };
+  }
+
+  function isTalkGif(file) {
+    return file.type === "image/gif" || /\.gif$/i.test(file.name || "");
+  }
+
+  function gifScreenSize(bytes) {
+    if (!bytes || bytes.length < 10) return null;
+    const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
+    if (sig !== "GIF87a" && sig !== "GIF89a") return null;
+    return { width: bytes[6] | (bytes[7] << 8), height: bytes[8] | (bytes[9] << 8) };
+  }
+
+  async function talkGifApi() {
+    const start = Date.now();
+    while (!window.FamilyHubGif && Date.now() - start < 3000) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    return window.FamilyHubGif || null;
+  }
+
+  async function encodeGifFrames(bytes, plan) {
+    const gifApi = await talkGifApi();
+    if (!gifApi || typeof ImageDecoder !== "function") throw new Error("gif too big");
+    const decoder = new ImageDecoder({ data: bytes, type: "image/gif" });
+    try {
+      await decoder.tracks.ready;
+      let count = decoder.tracks.selectedTrack?.frameCount || 0;
+      if (!count && decoder.completed) {
+        await decoder.completed;
+        count = decoder.tracks.selectedTrack?.frameCount || 0;
+      }
+      if (!count) throw new Error("gif");
+      const stride = Math.max(1, Math.ceil(count / plan.maxFrames));
+      const first = await decoder.decode({ frameIndex: 0 });
+      const srcW = first.image.displayWidth || first.image.codedWidth;
+      const srcH = first.image.displayHeight || first.image.codedHeight;
+      const scale = Math.min(1, plan.edge / Math.max(srcW, srcH, 1));
+      const width = Math.max(1, Math.round(srcW * scale));
+      const height = Math.max(1, Math.round(srcH * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const gif = gifApi.GIFEncoder();
+      for (let i = 0; i < count; i += stride) {
+        const result = i === 0 ? first : await decoder.decode({ frameIndex: i });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const frame = result.image;
+        const durationUs = frame.duration > 0 ? frame.duration : 100000;
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(frame, 0, 0, width, height);
+        frame.close();
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const palette = gifApi.quantize(imageData.data, plan.colors);
+        const index = gifApi.applyPalette(imageData.data, palette);
+        const delay = Math.max(20, Math.round(durationUs / 1000) * stride);
+        gif.writeFrame(index, width, height, { palette, delay, dispose: 1 });
+      }
+      gif.finish();
+      return { blob: new Blob([gif.bytes()], { type: "image/gif" }), width, height };
+    } finally {
+      if (decoder.close) decoder.close();
+    }
+  }
+
+  async function shrinkTalkGif(bytes) {
+    const plans = [
+      { edge: 480, colors: 128, maxFrames: 40 },
+      { edge: 360, colors: 64, maxFrames: 24 },
+      { edge: 280, colors: 32, maxFrames: 16 },
+      { edge: 200, colors: 32, maxFrames: 12 },
+    ];
+    let last = null;
+    for (const plan of plans) {
+      last = await encodeGifFrames(bytes, plan);
+      if (last.blob.size <= TALK_GIF_MAX_BYTES) {
+        return { blob: last.blob, width: last.width, height: last.height, contentType: "image/gif" };
+      }
+    }
+    throw new Error("gif too big");
+  }
+
+  async function fitTalkGif(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const screen = gifScreenSize(bytes);
+    if (!screen) return compressTalkImage(file);
+    if (bytes.length <= TALK_GIF_MAX_BYTES) {
+      return {
+        blob: new Blob([bytes], { type: "image/gif" }),
+        width: screen.width,
+        height: screen.height,
+        contentType: "image/gif",
+      };
+    }
+    return shrinkTalkGif(bytes);
+  }
+
+  async function prepareTalkImage(file) {
+    if (isTalkGif(file)) return fitTalkGif(file);
+    return compressTalkImage(file);
   }
 
   function renderTalkPhotoPreview(form) {
@@ -2399,11 +2514,15 @@
     const next = [];
     for (const file of chosen) {
       try {
-        const compressed = await compressTalkImage(file);
+        const compressed = await prepareTalkImage(file);
         compressed.previewUrl = URL.createObjectURL(compressed.blob);
         next.push(compressed);
-      } catch (_) {
-        toast("한 장을 읽지 못했어요. JPG나 PNG로 골라 주세요.");
+      } catch (err) {
+        toast(
+          isTalkGif(file) && /gif too big/i.test(String(err?.message || err))
+            ? "GIF가 너무 커요. 더 짧은 걸로 골라 주세요."
+            : "한 장을 읽지 못했어요. JPG, PNG, GIF로 골라 주세요."
+        );
       }
     }
     if (form._talkPhotoToken !== token) {
@@ -2429,7 +2548,7 @@
           postId,
           width: photo.width,
           height: photo.height,
-          contentType: "image/jpeg",
+          contentType: photo.contentType || photo.blob.type || "image/jpeg",
           data: firebase.firestore.Blob.fromUint8Array(bytes),
         });
         talkImageUrls.set(id, URL.createObjectURL(photo.blob));
@@ -2479,6 +2598,7 @@
       if (!field || !field.toUint8Array) throw new Error("image");
       blob = new Blob([field.toUint8Array()], { type: snap.data().contentType || "image/jpeg" });
     }
+    if (/gif/i.test(blob.type)) blob = await talkGifStill(blob);
     const data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
@@ -2503,7 +2623,7 @@
           <input name="photos" type="file" accept="image/*" multiple />
         </label>
         <div id="talk-photo-preview" class="talk-photo-preview"></div>
-        <p class="hint">사진은 올리기 전에 자동으로 줄여요. 한 번에 4장까지.</p>
+        <p class="hint">사진과 GIF는 올리기 전에 자동으로 줄여요. GIF는 누르면 움직이며 보여요. 한 번에 4장까지.</p>
         ${askGemini ? `<p class="hint">올리면 Gemini가 글과 사진을 보고 댓글로 답해요. 날씨를 물으면 일정에 있는 가족 지역 예보를 참고해요.</p>` : ""}
         <div class="modal-actions">
           <button type="button" id="cancel-modal">취소</button>
