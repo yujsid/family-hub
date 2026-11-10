@@ -77,6 +77,7 @@
   const WEATHER_REGION_KEY = "family-hub-weather-region";
   const WEATHER_KEY_STORAGE = "family-hub-weather-service-key";
   const WEATHER_CACHE_KEY = "family-hub-weather-cache";
+  const FAMILY_CACHE_KEY = "family-hub-family-cache";
   const POKE_RANK_KEY = "family-hub-poke-rank";
   const QUIZ_POINTS = 10;
   const QUIZ_MAX_WRONG = 1;
@@ -911,31 +912,131 @@
       .filter((c) => c.id);
   }
 
-  function applyRemoteData(data) {
-    state.applyingRemote = true;
-    state.events = Array.isArray(data.events) ? data.events : [];
-    state.stamps = Array.isArray(data.stamps) ? data.stamps : [];
-    state.posts = mergeTalkPosts(data.posts);
-    state.pin = data.pin || "1234";
-    state.categories = normalizeCategories(data.categories);
-    state.rates = { ...DEFAULT_RATES, ...(data.rates || {}) };
-    state.categories.forEach((c) => {
-      if (state.rates[c.id] == null) state.rates[c.id] = 500;
-    });
-    const todoRate = Number(data.todoRate);
-    state.todoRate = Number.isFinite(todoRate) && todoRate >= 0 ? todoRate : 500;
-    state.meals = normalizeMeals(data.meals);
-    mergeRemoteRanks(data);
-    state.pets = normalizePets(data.pets);
-    state.profiles = normalizeProfiles(data.profiles);
-    state.charLook = data.charLook === "classic" ? "classic" : "styled";
-    const uploadRanks = localRanksNeedUpload(data);
+  let lastFamilySig = "";
+  let pendingLocalEdit = false;
+
+  function familyDataSig(data) {
+    try {
+      return JSON.stringify([
+        data?.events || [],
+        data?.stamps || [],
+        data?.posts || [],
+        data?.pin || "1234",
+        data?.categories || null,
+        data?.rates || null,
+        data?.todoRate ?? null,
+        data?.meals || null,
+        data?.pets || null,
+        data?.profiles || null,
+        data?.charLook || "",
+        data?.pokeRank || null,
+        data?.timesRank || null,
+        data?.mathRank || null,
+        data?.oxRank || null,
+        data?.typeRank || null,
+      ]);
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function readFamilyCache() {
+    try {
+      const raw = localStorage.getItem(FAMILY_CACHE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      return data && typeof data === "object" ? data : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function rememberFamilyCache() {
+    try {
+      const payload = {
+        events: state.events,
+        stamps: state.stamps,
+        posts: state.posts,
+        pin: state.pin,
+        categories: state.categories,
+        rates: state.rates,
+        todoRate: state.todoRate,
+        meals: state.meals,
+        pets: state.pets,
+        profiles: state.profiles,
+        charLook: state.charLook === "classic" ? "classic" : "styled",
+        pokeRank: state.pokeRank,
+        timesRank: state.timesRank,
+        mathRank: state.mathRank,
+        oxRank: state.oxRank,
+        typeRank: state.typeRank,
+      };
+      const json = JSON.stringify(payload);
+      if (json.length > 1500000) return;
+      localStorage.setItem(FAMILY_CACHE_KEY, json);
+    } catch (_) {
+      /* 용량이 가득 차면 다음 실행은 클라우드를 기다립니다. */
+    }
+  }
+
+  function finishCloudHydration(data) {
     state.cloudHydrated = true;
-    render();
-    state.applyingRemote = false;
+    const uploadRanks = localRanksNeedUpload(data);
     if (uploadRanks) save();
     scheduleGeminiFollowUps();
     if (window.FamilyHubGcal) window.FamilyHubGcal.onLocalChange();
+    updateCloudStatus();
+  }
+
+  function applyRemoteData(data, opts = {}) {
+    const incoming = data || {};
+    if (!opts.fromCache && pendingLocalEdit) {
+      pendingLocalEdit = false;
+      state.cloudHydrated = true;
+      updateCloudStatus();
+      flushSave();
+      return;
+    }
+    const sig = familyDataSig(incoming);
+    if (sig && sig === lastFamilySig) {
+      if (!opts.fromCache && !state.cloudHydrated) finishCloudHydration(incoming);
+      return;
+    }
+    lastFamilySig = sig;
+    state.applyingRemote = true;
+    state.events = Array.isArray(incoming.events) ? incoming.events : [];
+    state.stamps = Array.isArray(incoming.stamps) ? incoming.stamps : [];
+    state.posts = mergeTalkPosts(incoming.posts);
+    state.pin = incoming.pin || "1234";
+    state.categories = normalizeCategories(incoming.categories);
+    state.rates = { ...DEFAULT_RATES, ...(incoming.rates || {}) };
+    state.categories.forEach((c) => {
+      if (state.rates[c.id] == null) state.rates[c.id] = 500;
+    });
+    const todoRate = Number(incoming.todoRate);
+    state.todoRate = Number.isFinite(todoRate) && todoRate >= 0 ? todoRate : 500;
+    state.meals = normalizeMeals(incoming.meals);
+    mergeRemoteRanks(incoming);
+    state.pets = normalizePets(incoming.pets);
+    state.profiles = normalizeProfiles(incoming.profiles);
+    state.charLook = incoming.charLook === "classic" ? "classic" : "styled";
+    const uploadRanks = localRanksNeedUpload(incoming);
+    if (!opts.fromCache) state.cloudHydrated = true;
+    render();
+    state.applyingRemote = false;
+    if (opts.fromCache) return;
+    rememberFamilyCache();
+    if (uploadRanks) save();
+    scheduleGeminiFollowUps();
+    if (window.FamilyHubGcal) window.FamilyHubGcal.onLocalChange();
+  }
+
+  function replaceHtml(el, html) {
+    if (!el) return false;
+    if (el._drawn === html) return false;
+    el._drawn = html;
+    el.innerHTML = html;
+    return true;
   }
 
   function esc(s) {
@@ -986,8 +1087,9 @@
 
   function save() {
     gcalSaveGen += 1;
-    if (!familyRef || state.applyingRemote) return;
-    if (state.saving) {
+    if (!state.cloudHydrated) pendingLocalEdit = true;
+    if (state.applyingRemote) return;
+    if (!familyRef || state.saving) {
       saveQueued = true;
       return;
     }
@@ -1001,6 +1103,7 @@
       saveQueued = true;
       return;
     }
+    pendingLocalEdit = false;
     state.saving = true;
     try {
       do {
@@ -1010,8 +1113,10 @@
         // merge:true deep-merges maps, so deleted meal keys would linger unless replaced.
         await familyRef.update({ meals: state.meals || {} });
         state.cloudError = "";
+        rememberFamilyCache();
       } while (saveQueued);
     } catch (err) {
+      pendingLocalEdit = true;
       state.cloudError = err.message || String(err);
       toast("클라우드 저장에 실패했습니다.");
       updateCloudStatus();
@@ -1044,32 +1149,49 @@
     }
   }
 
-  async function initCloud() {
-    updateCloudStatus();
-    if (!isFirebaseConfigured()) return;
+  function connectFirebase() {
+    if (familyRef) return true;
+    if (!isFirebaseConfigured()) return false;
     if (typeof firebase === "undefined") {
       state.cloudError = "Firebase SDK를 불러오지 못했습니다.";
-      updateCloudStatus();
-      return;
+      return false;
     }
     try {
-      firebase.initializeApp(window.FAMILY_HUB_FIREBASE);
+      if (!firebase.apps.length) firebase.initializeApp(window.FAMILY_HUB_FIREBASE);
       db = firebase.firestore();
       const docPath = window.FAMILY_HUB_DOC || DEFAULT_DOC;
       const [col, id] = docPath.split("/");
       familyRef = db.collection(col).doc(id);
+      return true;
+    } catch (err) {
+      state.cloudError = err.message || String(err);
+      return false;
+    }
+  }
 
-      const snap = await familyRef.get();
-      if (!snap.exists) {
-        state.cloudHydrated = true;
-        await familyRef.set(payloadFromState());
-      } else {
-        applyRemoteData(snap.data() || {});
-      }
+  async function initCloud() {
+    updateCloudStatus();
+    if (!connectFirebase()) {
+      updateCloudStatus();
+      return;
+    }
+    try {
+      let creatingFamily = false;
+      if (saveQueued && pendingLocalEdit) flushSave();
 
       familyRef.onSnapshot(
         (doc) => {
-          if (!doc.exists) return;
+          if (!doc.exists) {
+            if (creatingFamily) return;
+            creatingFamily = true;
+            state.cloudHydrated = true;
+            familyRef.set(payloadFromState()).catch((err) => {
+              creatingFamily = false;
+              state.cloudError = err.message || String(err);
+              updateCloudStatus();
+            });
+            return;
+          }
           if (state.saving || state.gcalSyncing) {
             if (state.saving) mergeRemoteRanks(doc.data() || {});
             return;
@@ -1273,18 +1395,20 @@
     ];
     const el = $("#type-filters");
     if (!el) return;
-    el.innerHTML =
+    replaceHtml(
+      el,
       `<span class="filter-label">보기</span>` +
-      types
-        .map(
-          (t) => `
+        types
+          .map(
+            (t) => `
       <label class="chip type-chip type-${t.id}">
         <input type="checkbox" data-type="${t.id}" ${state.typeFilter[t.id] ? "checked" : ""} />
         <span class="type-mark" aria-hidden="true">${t.icon}</span>
         ${t.label}
       </label>`
-        )
-        .join("");
+          )
+          .join("")
+    );
   }
 
   function renderMemberFilters() {
@@ -1301,7 +1425,7 @@
         )
         .join("");
     document.querySelectorAll("[data-member-filters]").forEach((el) => {
-      el.innerHTML = htmlFor(el.closest("#view-calendar") ? CALENDAR_MEMBERS : PEOPLE_MEMBERS);
+      replaceHtml(el, htmlFor(el.closest("#view-calendar") ? CALENDAR_MEMBERS : PEOPLE_MEMBERS));
     });
   }
 
@@ -1786,7 +1910,7 @@
       <button type="button" id="todo-show-more" class="ghost">더 보기 (+${TODO_MORE_STEP}일)</button>
     </div>`);
 
-    root.innerHTML = parts.join("");
+    replaceHtml(root, parts.join(""));
   }
 
   function weatherIcon(sky, pty) {
@@ -2069,7 +2193,7 @@
     if (state.calView === "month") body = renderMonth();
     if (state.calView === "week") body = renderWeek();
     if (state.calView === "day") body = renderDay();
-    root.innerHTML = `${weatherBannerHtml()}${body}`;
+    replaceHtml(root, `${weatherBannerHtml()}${body}`);
     ensureWeather();
     ensureSchoolLunches(state.cursor);
   }
@@ -2103,7 +2227,7 @@
     const year = d.getFullYear();
     const month = d.getMonth();
     $("#stamp-month-title").textContent = monthLabel(d);
-    $("#stamp-board").innerHTML = ALLOWANCE_MEMBERS.map((m) => {
+    replaceHtml($("#stamp-board"), ALLOWANCE_MEMBERS.map((m) => {
       const list = stampsInMonth(m.id, year, month);
       const cats = state.categories.map((c) => {
         const n = list.filter((s) => s.categoryId === c.id).length;
@@ -2130,7 +2254,7 @@
           </div>
         </div>
       </article>`;
-    }).join("");
+    }).join(""));
   }
 
   const GEMINI_AUTHOR = { name: "Gemini", role: "AI", color: "#4b6cb7" };
@@ -2166,10 +2290,10 @@
     if (!feed) return;
     const posts = [...state.posts].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     if (!posts.length) {
-      feed.innerHTML = emptyState("아직 글이 없어요. 첫 글을 남겨 보세요.");
+      replaceHtml(feed, emptyState("아직 글이 없어요. 첫 글을 남겨 보세요."));
       return;
     }
-    feed.innerHTML = posts
+    const html = posts
       .map((post) => {
         const author = talkAuthor(post.memberId);
         const comments = Array.isArray(post.comments) ? post.comments : [];
@@ -2227,7 +2351,8 @@
         </article>`;
       })
       .join("");
-    hydrateTalkImages(feed);
+    if (replaceHtml(feed, html)) hydrateTalkImages(feed);
+    if (talkImageFlush) talkImageFlush();
   }
 
   const TALK_IMAGE_LIMIT = 4;
@@ -2246,36 +2371,142 @@
     return `<div class="talk-photos">${list
       .map((img) => {
         const attrs = img.url ? `data-talk-url="${esc(img.url)}"` : `data-talk-image="${esc(img.id)}"`;
-        const src = img.url ? ` src="${esc(img.url)}"` : "";
-        return `<button type="button" class="talk-photo-open" ${attrs} aria-label="사진 크게 보기"><img${src} alt="올린 사진" /></button>`;
+        const cached = img.id ? talkImageUrls.get(img.id) : "";
+        const src = img.url || cached || "";
+        return `<button type="button" class="talk-photo-open" ${attrs} aria-label="사진 크게 보기"><img${src ? ` src="${esc(src)}"` : ""} alt="올린 사진" decoding="async" /></button>`;
       })
       .join("")}</div>`;
   }
 
-  async function loadTalkImageUrl(id) {
-    if (talkImageUrls.has(id)) return talkImageUrls.get(id);
-    const snap = await talkImageDoc(id).get();
-    const field = snap.data()?.data;
-    if (!field || !field.toUint8Array) throw new Error("image");
-    const url = URL.createObjectURL(new Blob([field.toUint8Array()], { type: snap.data().contentType || "image/jpeg" }));
-    talkImageUrls.set(id, url);
-    return url;
+  const talkImageLoads = new Map();
+
+  function loadTalkImageUrl(id) {
+    if (talkImageUrls.has(id)) return Promise.resolve(talkImageUrls.get(id));
+    if (talkImageLoads.has(id)) return talkImageLoads.get(id);
+    const pending = (async () => {
+      const snap = await talkImageDoc(id).get();
+      const field = snap.data()?.data;
+      if (!field || !field.toUint8Array) throw new Error("image");
+      const url = URL.createObjectURL(new Blob([field.toUint8Array()], { type: snap.data().contentType || "image/jpeg" }));
+      talkImageUrls.set(id, url);
+      return url;
+    })().catch((err) => {
+      talkImageLoads.delete(id);
+      throw err;
+    });
+    talkImageLoads.set(id, pending);
+    return pending;
+  }
+
+  let talkImageObserver = null;
+  let talkImageScroll = null;
+  let talkImageFlush = null;
+  const talkImageQueue = [];
+  let talkImageBusy = 0;
+
+  function pumpTalkImageQueue() {
+    while (talkImageBusy < 2 && talkImageQueue.length) {
+      const job = talkImageQueue.shift();
+      talkImageBusy += 1;
+      loadTalkImageUrl(job.id)
+        .then((url) => {
+          if (job.img.isConnected) job.img.src = url;
+        })
+        .catch(() => {
+          job.img.alt = "사진을 불러오지 못했어요";
+        })
+        .finally(() => {
+          talkImageBusy -= 1;
+          pumpTalkImageQueue();
+        });
+    }
+  }
+
+  function enqueueTalkImage(job) {
+    if (talkImageQueue.some((item) => item.id === job.id && item.img === job.img)) return;
+    talkImageQueue.push(job);
+    pumpTalkImageQueue();
   }
 
   function hydrateTalkImages(root) {
     if (!root) return;
+    if (talkImageObserver) {
+      talkImageObserver.disconnect();
+      talkImageObserver = null;
+    }
+    if (talkImageScroll) {
+      window.removeEventListener("scroll", talkImageScroll, true);
+      talkImageScroll = null;
+    }
+    const pending = [];
     root.querySelectorAll("[data-talk-image]").forEach((el) => {
       const img = el.tagName === "IMG" ? el : el.querySelector("img");
-      if (!img) return;
-      loadTalkImageUrl(el.dataset.talkImage)
-        .then((url) => {
-          if (!img.isConnected) return;
-          img.src = url;
-        })
-        .catch(() => {
-          img.alt = "사진을 불러오지 못했어요";
-        });
+      const id = el.dataset.talkImage;
+      if (!img || !id) return;
+      const cached = talkImageUrls.get(id);
+      if (cached) {
+        img.src = cached;
+        return;
+      }
+      pending.push({ el, img, id });
     });
+    if (!pending.length) return;
+    if (typeof IntersectionObserver !== "function") {
+      pending.forEach(enqueueTalkImage);
+      return;
+    }
+    const groups = new Map();
+    pending.forEach((job) => {
+      const target = job.el.closest(".talk-post") || job.el;
+      if (!groups.has(target)) groups.set(target, []);
+      groups.get(target).push(job);
+    });
+    const flushVisible = () => {
+      groups.forEach((jobs, target) => {
+        if (!target.isConnected) {
+          groups.delete(target);
+          return;
+        }
+        const rect = target.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
+        if (rect.bottom < -600 || rect.top > window.innerHeight + 600) return;
+        groups.delete(target);
+        try {
+          if (talkImageObserver) talkImageObserver.unobserve(target);
+        } catch (_) {
+          /* already dropped */
+        }
+        jobs.forEach(enqueueTalkImage);
+      });
+    };
+    if (typeof IntersectionObserver === "function") {
+      talkImageObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const jobs = groups.get(entry.target);
+            if (!jobs) return;
+            groups.delete(entry.target);
+            talkImageObserver.unobserve(entry.target);
+            jobs.forEach(enqueueTalkImage);
+          });
+        },
+        { rootMargin: "600px 0px" }
+      );
+      groups.forEach((_, target) => talkImageObserver.observe(target));
+    }
+    talkImageFlush = flushVisible;
+    talkImageScroll = () => {
+      flushVisible();
+      if (groups.size) return;
+      window.removeEventListener("scroll", talkImageScroll, true);
+      talkImageScroll = null;
+      if (talkImageFlush === flushVisible) talkImageFlush = null;
+    };
+    window.addEventListener("scroll", talkImageScroll, true);
+    flushVisible();
+    requestAnimationFrame(() => requestAnimationFrame(flushVisible));
+    setTimeout(flushVisible, 250);
   }
 
   async function openTalkPhoto(button) {
@@ -2397,12 +2628,16 @@
     return { width: bytes[6] | (bytes[7] << 8), height: bytes[8] | (bytes[9] << 8) };
   }
 
-  async function talkGifApi() {
-    const start = Date.now();
-    while (!window.FamilyHubGif && Date.now() - start < 3000) {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+  let talkGifLoader = null;
+  function talkGifApi() {
+    if (window.FamilyHubGif) return Promise.resolve(window.FamilyHubGif);
+    if (!talkGifLoader) {
+      const url = new URL("gif-encode.js", document.baseURI).href;
+      talkGifLoader = import(url)
+        .then(() => window.FamilyHubGif || null)
+        .catch(() => null);
     }
-    return window.FamilyHubGif || null;
+    return talkGifLoader;
   }
 
   async function encodeGifFrames(bytes, plan) {
@@ -2561,8 +2796,30 @@
     }
   }
 
+  let firebaseStorageLoader = null;
+  function ensureFirebaseStorage() {
+    if (typeof firebase !== "undefined" && firebase.storage) return Promise.resolve();
+    if (!firebaseStorageLoader) {
+      firebaseStorageLoader = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js";
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("storage"));
+        document.head.appendChild(script);
+      });
+    }
+    return firebaseStorageLoader;
+  }
+
   async function deleteTalkImageFiles(images) {
     if (!Array.isArray(images)) return;
+    if (images.some((img) => img?.path)) {
+      try {
+        await ensureFirebaseStorage();
+      } catch (_) {
+        /* 예전 Storage 파일이 아니면 넘어갑니다. */
+      }
+    }
     await Promise.all(
       images.map(async (img) => {
         if (img?.id && typeof firebase !== "undefined" && firebase.firestore) {
@@ -3031,7 +3288,7 @@
       if (latest) bits.push(`⚖️ ${formatPetWeight(p, latest.value)}`);
       return card(p.id, p.name, bits.join(" · "));
     }).join("");
-    root.innerHTML = people + pets;
+    replaceHtml(root, people + pets);
   }
 
   function introProfileHead(id, title, sub) {
@@ -5714,15 +5971,18 @@
     document.querySelectorAll(".drawer-item").forEach((t) => t.classList.toggle("is-active", t.dataset.goTab === state.tab));
     document.body.dataset.tab = state.tab;
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${state.tab}`));
-    renderTypeFilters();
-    renderMemberFilters();
-    if (state.tab === "calendar") renderCalendar();
-    if (state.tab === "todos") renderTodos();
-    if (state.tab === "stamps") renderStampBoard();
-    if (state.tab === "intro") renderIntro();
-    if (state.tab === "talk") renderTalk();
-    if (state.tab === "game") renderGameTab();
-    if (state.tab === "settings") renderSettings();
+    if (state.tab === "calendar") {
+      renderTypeFilters();
+      renderMemberFilters();
+      renderCalendar();
+    } else if (state.tab === "todos") {
+      renderMemberFilters();
+      renderTodos();
+    } else if (state.tab === "stamps") renderStampBoard();
+    else if (state.tab === "intro") renderIntro();
+    else if (state.tab === "talk") renderTalk();
+    else if (state.tab === "game") renderGameTab();
+    else if (state.tab === "settings") renderSettings();
     persistTab();
     publishWidgetSnapshot();
   }
@@ -6846,15 +7106,36 @@
     newId: uid,
   };
 
+  function warmWeatherCache() {
+    const region = getWeatherRegion();
+    const cached = loadWeatherCache(region.id);
+    if (!cached?.byDate) return;
+    state.weatherByDate = cached.byDate;
+    state.weatherMeta = { source: cached.source || "", label: region.label, error: "" };
+  }
+
+  function warmSchoolLunchCache() {
+    const cached = loadSchoolLunchCache();
+    if (!cached?.byDate || !Object.keys(cached.byDate).length) return;
+    state.schoolLunches = { ...state.schoolLunches, ...cached.byDate };
+    state.schoolLunchMeta = {
+      loading: false,
+      error: "",
+      school: cached.school || getSchoolMealConfig().name,
+      range: cached.range || "",
+    };
+  }
+
   hydrateLocalRanks();
-  initCloud().then(() => {
-    renderNav();
-    bind();
-    ensureWeather();
-    ensureSchoolLunches(state.cursor);
-    render();
-    updateCloudStatus();
-  });
+  warmWeatherCache();
+  warmSchoolLunchCache();
+  renderNav();
+  bind();
+  connectFirebase();
+  const cachedFamily = readFamilyCache();
+  if (cachedFamily) applyRemoteData(cachedFamily, { fromCache: true });
+  else render();
+  initCloud();
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {

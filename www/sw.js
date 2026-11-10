@@ -1,4 +1,4 @@
-const CACHE = "family-hub-v74";
+const CACHE = "family-hub-v75";
 const ASSETS = [
   "./",
   "./index.html",
@@ -50,7 +50,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Network-first for app shell so updates show up reliably on phones.
+  // Show the saved app shell immediately, then refresh it in the background.
   const isAppShell =
     url.pathname.endsWith("/") ||
     url.pathname.endsWith("/index.html") ||
@@ -65,15 +65,21 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/sw.js");
 
   if (isAppShell) {
-    event.respondWith(
-      fetch(req)
+    const pending = (async () => {
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match(req);
+      const refresh = fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(req, copy));
+          if (res && res.ok) return cache.put(req, res.clone()).then(() => res);
           return res;
         })
-        .catch(() => caches.match(req))
-    );
+        .catch(() => null);
+      if (cached) return { response: cached, refresh };
+      const fresh = await refresh;
+      return { response: fresh || cached || new Response("", { status: 503 }), refresh: Promise.resolve() };
+    })();
+    event.waitUntil(pending.then((result) => result.refresh));
+    event.respondWith(pending.then((result) => result.response));
     return;
   }
 
